@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2e7d32">
+  <title>Mi Huerta</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="lib/leaflet/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <button id="btn-back" class="icon-btn hidden" aria-label="Volver">←</button>
+    <h1 id="titulo">🌱 Mi Huerta</h1>
+  </header>
+
+  <main>
+    <!-- ================= INICIO ================= -->
+    <section id="v-inicio" class="view">
+      <div id="aviso-update" class="card update hidden"></div>
+      <button id="btn-nuevo" class="btn-big">＋ Nuevo cultivo</button>
+      <h2 class="sub">Mis cultivos</h2>
+      <div id="lista"></div>
+
+      <h2 class="sub">☁️ Copia de seguridad</h2>
+      <div class="card" id="respaldo-card"></div>
+      <p class="pie" id="version-txt"></p>
+    </section>
+
+    <!-- ================= FORMULARIO ================= -->
+    <section id="v-form" class="view hidden">
+      <label class="lbl">1. ¿Qué vas a plantar?</label>
+      <div id="f-cats" class="seg"></div>
+      <input id="f-buscar" class="inp" type="search" placeholder="Buscar… (ej. frutilla, palto)">
+      <div id="f-cultivos" class="chips"></div>
+
+      <label class="lbl">2. ¿Dónde está?</label>
+      <input id="f-lugar" class="inp" type="text" placeholder="Nombre del lugar o sector (ej. La Barranca)">
+      <div class="row2 mt">
+        <button type="button" id="btn-gps" class="btn-sec">📍 Mi ubicación</button>
+        <button type="button" id="btn-mapa" class="btn-sec">🗺️ Elegir en mapa</button>
+      </div>
+      <div id="mapa-box" class="hidden">
+        <div class="buscar-mapa">
+          <input id="mapa-q" class="inp" type="search" placeholder="Buscar lugar en el mapa…">
+          <button type="button" id="mapa-ir" class="btn-sec">🔎</button>
+        </div>
+        <div id="mapa-res" class="mapa-res"></div>
+        <div id="mapa"></div>
+        <p class="nota">Toca el mapa en el lugar exacto de tu cultivo.</p>
+      </div>
+      <div id="ubic-estado" class="nota"></div>
+
+      <label class="lbl">3. Clima y zona</label>
+      <div id="f-modo" class="seg"></div>
+      <div id="clima-info" class="clima-info hidden"></div>
+      <select id="f-zona" class="inp mt"></select>
+
+      <label class="lbl">4. ¿Cuánto sol le llega?</label>
+      <div id="f-sol" class="opts"></div>
+
+      <label class="lbl">5. Suelo</label>
+      <div id="f-suelo" class="opts"></div>
+      <div class="row2 mt">
+        <div><span class="mini">pH del suelo (opcional)</span>
+          <input id="f-ph" class="inp" type="number" min="3" max="10" step="0.1" placeholder="No sé" inputmode="decimal"></div>
+        <label class="check"><input id="f-mulch" type="checkbox"> Uso mulch / acolchado</label>
+      </div>
+
+      <label class="lbl">6. ¿Cómo riegas?</label>
+      <div id="f-metodo" class="opts"></div>
+      <div id="goteo-box" class="row2 mt hidden">
+        <div><span class="mini">Goteros por planta</span>
+          <input id="f-goteros" class="inp" type="number" min="1" step="1" placeholder="Auto" inputmode="numeric"></div>
+        <div><span class="mini">Caudal del gotero (L/h)</span>
+          <input id="f-caudal" class="inp" type="number" min="0.5" step="0.5" placeholder="Auto" inputmode="decimal"></div>
+      </div>
+
+      <div id="anual-box" class="row2">
+        <div><label class="lbl" for="f-area">7. Superficie (m²)</label>
+          <input id="f-area" class="inp" type="number" min="1" step="1" value="10" inputmode="numeric"></div>
+        <div><label class="lbl" for="f-fecha">8. Fecha de plantación</label>
+          <input id="f-fecha" class="inp" type="date"></div>
+      </div>
+      <div id="perenne-box" class="row2 hidden">
+        <div><label class="lbl" for="f-plantas">7. Nº de plantas</label>
+          <input id="f-plantas" class="inp" type="number" min="1" step="1" value="1" inputmode="numeric"></div>
+        <div><label class="lbl" for="f-edad">8. Edad</label>
+          <select id="f-edad" class="inp"></select></div>
+      </div>
+
+      <p id="f-error" class="error hidden"></p>
+      <button id="btn-ver" class="btn-big">Ver mi plan 🌿</button>
+    </section>
+
+    <!-- ================= PLAN ================= -->
+    <section id="v-plan" class="view hidden">
+      <div id="p-head" class="card head"></div>
+      <nav class="tabs">
+        <button data-tab="resumen" class="active">📋<br>Resumen</button>
+        <button data-tab="riego">💧<br>Riego</button>
+        <button data-tab="nutricion">🧪<br>Nutrición</button>
+        <button data-tab="plagas">🐛<br>Plagas</button>
+      </nav>
+      <div id="p-body"></div>
+      <div class="actions">
+        <button id="btn-guardar" class="btn-big">💾 Guardar cultivo</button>
+        <div class="row2">
+          <button id="btn-editar" class="btn-sec hidden">✏️ Editar</button>
+          <button id="btn-borrar" class="btn-danger hidden">🗑 Eliminar</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="lib/leaflet/leaflet.js"></script>
+  <script src="data.js"></script>
+  <script src="calc.js"></script>
+  <script src="clima.js"></script>
+  <script src="respaldo.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

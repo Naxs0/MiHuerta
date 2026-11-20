@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;text-align:center;padding-top:40vh;color:#2e7d32">🌱 Mi Huerta…
+<script>
+  // Recupera los cultivos guardados por la versión 1 (que usaba otro almacenamiento)
+  var datos = "";
+  try { datos = localStorage.getItem("mihuerta.cultivos") || ""; } catch (e) {}
+  Android.guardarMigracion(datos);
+</script>
+</body></html>
