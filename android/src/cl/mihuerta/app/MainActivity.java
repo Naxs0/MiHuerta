@@ -40,7 +40,7 @@ import java.util.TimeZone;
 public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
     static final String INICIO = "https://" + HOST + "/www/index.html";
-    static final int REQ_CREAR = 1, REQ_ABRIR = 2, REQ_GPS = 3, REQ_CAL = 4;
+    static final int REQ_CREAR = 1, REQ_ABRIR = 2, REQ_GPS = 3, REQ_CAL = 4, REQ_NOTIF = 5;
 
     private WebView web;
     private SharedPreferences prefs;
@@ -115,6 +115,12 @@ public class MainActivity extends Activity {
         else web.loadUrl(INICIO);
     }
 
+    private boolean avisosPermitidos() {
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
+        return ((android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE)).areNotificationsEnabled();
+    }
+
     private boolean oscuro() {
         return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
@@ -131,6 +137,9 @@ public class MainActivity extends Activity {
             for (int r : res) ok |= (r == PackageManager.PERMISSION_GRANTED);
             geoCb.invoke(geoOrigen, ok, false);
             geoCb = null;
+        }
+        if (code == REQ_NOTIF) {
+            llamarJs("alPermisoAvisos", avisosPermitidos() ? "1" : "0");
         }
         if (code == REQ_CAL) {
             if (tieneCalendario()) listarCalendariosAhora();
@@ -284,6 +293,39 @@ public class MainActivity extends Activity {
     }
 
     class Puente {
+        // ----- notificaciones -----
+        @JavascriptInterface
+        public boolean avisosPermitidos() {
+            return MainActivity.this.avisosPermitidos();
+        }
+
+        @JavascriptInterface
+        public void pedirPermisoAvisos() {
+            if (MainActivity.this.avisosPermitidos()) { llamarJs("alPermisoAvisos", "1"); return; }
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF));
+            } else {
+                llamarJs("alPermisoAvisos", "0");
+            }
+        }
+
+        @JavascriptInterface
+        public void programarAvisos(String json) {
+            Avisos.programar(getApplicationContext(), json);
+        }
+
+        @JavascriptInterface
+        public void probarAviso(String titulo, String texto) {
+            Avisos.mostrar(getApplicationContext(), 99, titulo, texto);
+        }
+
+        @JavascriptInterface
+        public void abrirAjustesAvisos() {
+            Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName());
+            runOnUiThread(() -> { try { startActivity(i); } catch (Exception ignored) { } });
+        }
+
         @JavascriptInterface
         public boolean oscuroSistema() {
             return oscuro();

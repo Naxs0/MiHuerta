@@ -26,6 +26,7 @@ const cargar = () => { try { return JSON.parse(localStorage.getItem(KEY)) || [];
 function guardarTodo(lista) {
   localStorage.setItem(KEY, JSON.stringify(lista));
   Respaldo.sincronizar(lista);
+  programarAvisos(false);
 }
 function fusionar(nuevos) {
   const lista = cargar();
@@ -90,6 +91,7 @@ function renderInicio() {
     cfgActual = cargar().find((x) => x.id === el.dataset.id); tabActual = "resumen"; location.hash = "#plan";
   });
   renderAgenda(lista);
+  renderAvisos();
   renderRespaldo();
   $("#version-txt").innerHTML = `Mi Huerta v${Actualizar.version()} · <a href="#" id="buscar-upd">Buscar actualizaciones</a>`;
   $("#buscar-upd").onclick = (ev) => { ev.preventDefault(); revisarVersion(true); };
@@ -655,6 +657,111 @@ function tabNutricionHidro(p) {
     <p class="pie">En casas de jardinería venden mezclas A y B listas para hidroponía; úsalas según su etiqueta si prefieres no preparar la receta.</p>`;
 }
 
+// ---------------- AVISOS (notificaciones) ----------------
+var avisoTimer = null, proximoAviso = null;
+function avisosCfg() {
+  try { return { on: false, hora: "08:00", heladas: true, ...JSON.parse(localStorage.getItem("mihuerta.avisos") || "{}") }; }
+  catch { return { on: false, hora: "08:00", heladas: true }; }
+}
+function guardarAvisosCfg(c) { localStorage.setItem("mihuerta.avisos", JSON.stringify(c)); }
+
+// Un aviso por día con las tareas pendientes (30 días) + alertas de helada del pronóstico
+async function construirAvisos() {
+  const conf = avisosCfg(), lista = cargar(), hoy = hoy0(), hasta = sumarDias(hoy, 29), ahora = Date.now();
+  const [h, m] = conf.hora.split(":").map(Number);
+  const porDia = {};
+  for (const cfg of lista) {
+    const plan = calcularPlan(cfg);
+    for (const o of Calendario.ocurrencias(cfg, Calendario.eventos(plan), hoy, hasta)) {
+      if (o.hecho) continue;
+      const k = Calendario.iso(o.fecha);
+      (porDia[k] = porDia[k] || []).push(`${o.ev.titulo}${cfg.lugar ? " · " + cfg.lugar : ""}`);
+    }
+  }
+  const avisos = [];
+  Object.keys(porDia).sort().forEach((k, i) => {
+    const d = Calendario.deIso(k);
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
+    if (t <= ahora) return;
+    const it = porDia[k];
+    avisos.push({ id: 100 + i, t, titulo: `🌱 Hoy en tu huerta: ${it.length} tarea${it.length > 1 ? "s" : ""}`,
+      texto: it.slice(0, 8).join("\n") + (it.length > 8 ? `\n… y ${it.length - 8} más` : "") });
+  });
+  if (conf.heladas) {
+    const vistos = new Set();
+    for (const cfg of lista) {
+      if (cfg.lat == null) continue;
+      const k = `${cfg.lat.toFixed(2)},${cfg.lon.toFixed(2)}`;
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      try {
+        const pr = await Clima.pronostico(cfg.lat, cfg.lon);
+        pr.dias.forEach((d) => {
+          if (d.min > 1) return;
+          const dia = parseFecha(d.fecha);
+          const t = new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() - 1, 19, 0).getTime();
+          if (t <= ahora) return;
+          avisos.push({ id: 900 + avisos.length, t, titulo: `❄️ Helada mañana en ${cfg.lugar || "tu huerta"}`,
+            texto: `Mínima de ${Math.round(d.min)} °C. Cubre las plantas sensibles con manta térmica y riega hoy en la tarde.` });
+        });
+      } catch {}
+    }
+  }
+  return avisos.sort((a, b) => a.t - b.t);
+}
+
+function programarAvisos(inmediato) {
+  if (!nativo() || !Android.programarAvisos) return;
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(async () => {
+    const av = avisosCfg().on ? await construirAvisos() : [];
+    Android.programarAvisos(JSON.stringify(av));
+    proximoAviso = av[0] || null;
+    if (!location.hash) renderAvisos();
+  }, inmediato ? 0 : 2000);
+}
+
+function renderAvisos() {
+  const box = $("#avisos-card");
+  if (!box) return;
+  if (!nativo() || !Android.programarAvisos) {
+    box.innerHTML = `<p class="nota">Las notificaciones funcionan en la app de Android. Aquí puedes vincular Google Calendar desde la Agenda de cada cultivo.</p>`;
+    return;
+  }
+  const conf = avisosCfg();
+  window.alPermisoAvisos = (ok) => {
+    if (ok === "1") { const c = avisosCfg(); c.on = true; guardarAvisosCfg(c); programarAvisos(true); toast("🔔 Avisos activados"); }
+    else toast("Las notificaciones están bloqueadas: actívalas en Ajustes", 4000);
+    renderAvisos();
+  };
+  if (!conf.on) {
+    box.innerHTML = `<p>Recibe cada mañana las tareas del día (riego, abono, foliares y tus tareas) y alertas de <b>helada</b> la tarde anterior.</p>
+      <button class="btn-big" id="av-on">🔔 Activar avisos</button>`;
+    $("#av-on").onclick = () => Android.pedirPermisoAvisos();
+    return;
+  }
+  const permitido = Android.avisosPermitidos();
+  const prox = proximoAviso ? new Date(proximoAviso.t) : null;
+  box.innerHTML = `<p>✅ <b>Avisos activos</b></p>
+    ${permitido ? "" : `<div class="alerta">⚠️ Las notificaciones de Mi Huerta están bloqueadas en el teléfono. <button class="btn-link" id="av-ajustes">Abrir ajustes</button></div>`}
+    <div class="row2"><div><span class="mini">Hora del aviso diario</span><input id="av-hora" type="time" class="inp" value="${conf.hora}"></div>
+      <label class="check"><input id="av-heladas" type="checkbox" ${conf.heladas ? "checked" : ""}> Avisar heladas</label></div>
+    <p class="nota mt">${prox ? `Próximo aviso: <b>${fechaLarga(prox)} ${String(prox.getHours()).padStart(2, "0")}:${String(prox.getMinutes()).padStart(2, "0")}</b> — ${esc(proximoAviso.titulo)}` : "No hay tareas pendientes en los próximos 30 días."}</p>
+    <div class="row2"><button class="btn-sec" id="av-probar">🔔 Probar</button><button class="btn-sec" id="av-off">🔕 Desactivar</button></div>
+    <p class="nota mt">Si además vinculaste un cultivo con Google Calendar, el calendario también te avisará.</p>`;
+  const guardar = () => { const c = avisosCfg(); c.hora = $("#av-hora").value || "08:00"; c.heladas = $("#av-heladas").checked; guardarAvisosCfg(c); programarAvisos(true); toast("💾 Avisos actualizados"); };
+  $("#av-hora").onchange = guardar;
+  $("#av-heladas").onchange = guardar;
+  $("#av-probar").onclick = async () => {
+    const av = await construirAvisos();
+    const a = av.find((x) => x.titulo.startsWith("🌱")) || { titulo: "🌱 Mi Huerta", texto: "Así se verán tus avisos." };
+    Android.probarAviso(a.titulo, a.texto);
+  };
+  $("#av-off").onclick = () => { const c = avisosCfg(); c.on = false; guardarAvisosCfg(c); programarAvisos(true); renderAvisos(); toast("🔕 Avisos desactivados"); };
+  const aj = $("#av-ajustes");
+  if (aj) aj.onclick = () => Android.abrirAjustesAvisos();
+}
+
 // ---------------- TEMA ----------------
 const TEMAS = { claro: "☀️ Claro", oscuro: "🌙 Oscuro", auto: "🌓 Automático" };
 const temaGuardado = () => localStorage.getItem("mihuerta.tema") || "auto";
@@ -1096,6 +1203,7 @@ formVacio();
 if (location.hash) history.replaceState(null, "", location.pathname);
 router();
 revisarVersion(false);
+programarAvisos(false);   // reprograma con los datos y el pronóstico de hoy
 
 if ("serviceWorker" in navigator && !nativo()) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
