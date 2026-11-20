@@ -9,6 +9,8 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -52,6 +54,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("mihuerta", MODE_PRIVATE);
         web = new WebView(this);
+        web.setBackgroundColor(oscuro() ? Color.parseColor("#121512") : Color.parseColor("#f6f8f4"));
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -110,6 +113,10 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else if (!prefs.getBoolean("migrado", false)) web.loadUrl("file:///android_asset/www/migrar.html");
         else web.loadUrl(INICIO);
+    }
+
+    private boolean oscuro() {
+        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
 
     private boolean tieneGps() {
@@ -277,6 +284,11 @@ public class MainActivity extends Activity {
     }
 
     class Puente {
+        @JavascriptInterface
+        public boolean oscuroSistema() {
+            return oscuro();
+        }
+
         @JavascriptInterface
         public String version() {
             try {

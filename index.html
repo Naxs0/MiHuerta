@@ -10,11 +10,20 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="lib/leaflet/leaflet.css">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Aplicar el tema antes de pintar (evita parpadeo)
+    (function () {
+      var t = localStorage.getItem("mihuerta.tema") || "auto";
+      var sis = window.Android && Android.oscuroSistema ? Android.oscuroSistema() : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.tema = t === "oscuro" || (t === "auto" && sis) ? "oscuro" : "claro";
+    })();
+  </script>
 </head>
 <body>
   <header class="top">
     <button id="btn-back" class="icon-btn hidden" aria-label="Volver">←</button>
     <h1 id="titulo">🌱 Mi Huerta</h1>
+    <button id="btn-tema" class="icon-btn tema-btn" aria-label="Cambiar tema">🌓</button>
   </header>
 
   <main>
@@ -28,6 +37,9 @@
       </div>
       <h2 class="sub">Mis cultivos</h2>
       <div id="lista"></div>
+
+      <h2 class="sub">🎨 Apariencia</h2>
+      <div id="f-tema" class="seg"></div>
 
       <h2 class="sub">☁️ Copia de seguridad</h2>
       <div class="card" id="respaldo-card"></div>
@@ -66,33 +78,47 @@
       <label class="lbl">4. ¿Cuánto sol le llega?</label>
       <div id="f-sol" class="opts"></div>
 
-      <label class="lbl">5. Suelo</label>
-      <div id="f-suelo" class="opts"></div>
-      <div class="row2 mt">
-        <div><span class="mini">pH del suelo (opcional)</span>
-          <input id="f-ph" class="inp" type="number" min="3" max="10" step="0.1" placeholder="No sé" inputmode="decimal"></div>
-        <label class="check"><input id="f-mulch" type="checkbox"> Uso mulch / acolchado</label>
+      <div id="variedad-box" class="hidden">
+        <label class="lbl">Variedad</label>
+        <div id="f-variedad" class="opts opts-var"></div>
       </div>
 
-      <label class="lbl">6. ¿Cómo riegas?</label>
-      <div id="f-metodo" class="opts"></div>
-      <div id="goteo-box" class="row2 mt hidden">
-        <div><span class="mini">Goteros por planta</span>
-          <input id="f-goteros" class="inp" type="number" min="1" step="1" placeholder="Auto" inputmode="numeric"></div>
-        <div><span class="mini">Caudal del gotero (L/h)</span>
-          <input id="f-caudal" class="inp" type="number" min="0.5" step="0.5" placeholder="Auto" inputmode="decimal"></div>
+      <div id="suelo-box">
+        <label class="lbl">5. Suelo</label>
+        <div id="f-suelo" class="opts"></div>
+        <div class="row2 mt">
+          <div><span class="mini">pH del suelo (opcional)</span>
+            <input id="f-ph" class="inp" type="number" min="3" max="10" step="0.1" placeholder="No sé" inputmode="decimal"></div>
+          <label class="check"><input id="f-mulch" type="checkbox"> Uso mulch / acolchado</label>
+        </div>
       </div>
 
-      <div id="anual-box" class="row2">
-        <div><label class="lbl" for="f-area">7. Superficie (m²)</label>
+      <div id="metodo-box">
+        <label class="lbl">6. ¿Cómo riegas?</label>
+        <div id="f-metodo" class="opts"></div>
+        <div id="goteo-box" class="row2 mt hidden">
+          <div><span class="mini">Goteros por planta</span>
+            <input id="f-goteros" class="inp" type="number" min="1" step="1" placeholder="Auto" inputmode="numeric"></div>
+          <div><span class="mini">Caudal del gotero (L/h)</span>
+            <input id="f-caudal" class="inp" type="number" min="0.5" step="0.5" placeholder="Auto" inputmode="decimal"></div>
+        </div>
+      </div>
+
+      <div id="hidro-box" class="hidden">
+        <label class="lbl">5. Sistema hidropónico</label>
+        <div id="f-sistema" class="opts"></div>
+        <div class="mt"><span class="mini">Volumen del estanque en litros (opcional)</span>
+          <input id="f-volumen" class="inp" type="number" min="5" step="1" placeholder="Auto según plantas" inputmode="numeric"></div>
+      </div>
+
+      <div class="row2">
+        <div id="area-wrap"><label class="lbl" for="f-area">7. Superficie (m²)</label>
           <input id="f-area" class="inp" type="number" min="1" step="1" value="10" inputmode="numeric"></div>
-        <div><label class="lbl" for="f-fecha">8. Fecha de plantación</label>
-          <input id="f-fecha" class="inp" type="date"></div>
-      </div>
-      <div id="perenne-box" class="row2 hidden">
-        <div><label class="lbl" for="f-plantas">7. Nº de plantas</label>
+        <div id="plantas-wrap" class="hidden"><label class="lbl" for="f-plantas">7. Nº de plantas</label>
           <input id="f-plantas" class="inp" type="number" min="1" step="1" value="1" inputmode="numeric"></div>
-        <div><label class="lbl" for="f-edad">8. Edad</label>
+        <div id="fecha-wrap"><label class="lbl" for="f-fecha">8. Fecha de plantación</label>
+          <input id="f-fecha" class="inp" type="date"></div>
+        <div id="edad-wrap" class="hidden"><label class="lbl" for="f-edad">8. Edad</label>
           <select id="f-edad" class="inp"></select></div>
       </div>
 

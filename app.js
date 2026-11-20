@@ -78,9 +78,9 @@ function renderInicio() {
       else if (p.ahora.tipo === "fin") estado = "Ciclo terminado";
       else {
         const e = p.ahora.etapa;
-        estado = `${e.icono} ${e.nombre} · ${e.riego.cada ? `regar cada ${e.riego.cada} días` : "sin riego (lluvia)"}`;
+        estado = `${e.icono} ${e.nombre} · ${p.hidro ? `EC ${e.riego.ec[0]}–${e.riego.ec[1]}` : e.riego.cada ? `regar cada ${e.riego.cada} días` : "sin riego (lluvia)"}`;
       }
-      const cant = p.c.perenne ? `${cfg.plantas} planta${cfg.plantas > 1 ? "s" : ""}` : `${cfg.area} m²`;
+      const cant = p.c.perenne || p.hidro ? `${cfg.plantas} planta${cfg.plantas > 1 ? "s" : ""}${p.variedad ? " · " + p.variedad.nombre : ""}` : `${cfg.area} m²`;
       return `<div class="card item" data-id="${cfg.id}">
         <span class="e">${p.c.emoji}</span>
         <div><div class="t">${esc(p.c.nombre)} · ${esc(cfg.lugar || "Sin lugar")}</div>
@@ -150,18 +150,20 @@ async function revisarVersion(forzar) {
 const form = {};
 function formVacio() {
   Object.assign(form, { editId: null, cultivo: null, cat: "todas", sol: "sol", suelo: "franco", metodo: "manguera",
-    modoClima: "auto", lat: null, lon: null, climaLoc: null });
+    modoClima: "auto", lat: null, lon: null, climaLoc: null, sistema: "nft", variedad: null });
 }
 
 function prepararForm(cfg) {
   formVacio();
   $("#f-buscar").value = ""; $("#f-lugar").value = ""; $("#f-area").value = 10; $("#f-plantas").value = 1;
   $("#f-fecha").value = hoyISO(); $("#f-zona").value = "valle"; $("#f-edad").value = "adulta";
-  $("#f-ph").value = ""; $("#f-mulch").checked = false; $("#f-goteros").value = ""; $("#f-caudal").value = "";
+  $("#f-ph").value = ""; $("#f-mulch").checked = false; $("#f-goteros").value = ""; $("#f-caudal").value = ""; $("#f-volumen").value = "";
   $("#ubic-estado").textContent = ""; $("#mapa-box").classList.add("hidden");
   if (cfg) {
     Object.assign(form, { editId: cfg.id, cultivo: cfg.cultivo, sol: cfg.sol, suelo: cfg.suelo, metodo: cfg.metodo || "manguera",
-      modoClima: cfg.modoClima || "manual", lat: cfg.lat ?? null, lon: cfg.lon ?? null, climaLoc: cfg.climaLoc || null });
+      modoClima: cfg.modoClima || "manual", lat: cfg.lat ?? null, lon: cfg.lon ?? null, climaLoc: cfg.climaLoc || null,
+      sistema: cfg.sistema || "nft", variedad: cfg.variedad || null });
+    if (cfg.volumen) $("#f-volumen").value = cfg.volumen;
     $("#f-lugar").value = cfg.lugar || ""; $("#f-zona").value = cfg.zona;
     if (cfg.area) $("#f-area").value = cfg.area;
     if (cfg.fecha) $("#f-fecha").value = cfg.fecha;
@@ -187,15 +189,23 @@ function pintarCats() {
 
 function pintarCultivos() {
   const q = norm($("#f-buscar").value.trim());
-  const lista = CULTIVOS.filter((c) => (form.cat === "todas" || c.cat === form.cat) && (!q || norm(c.nombre).includes(q)));
+  const enCat = (c) => form.cat === "todas" || (form.cat === "hidro" ? c.hidro : c.cat === form.cat && !c.hidro);
+  const lista = CULTIVOS.filter((c) => enCat(c) && (!q || norm(c.nombre).includes(q)));
   $("#f-cultivos").innerHTML = lista.length
     ? lista.map((c) => `<div class="chip ${form.cultivo === c.id ? "sel" : ""}" data-id="${c.id}"><span class="e">${c.emoji}</span>${c.nombre}</div>`).join("")
     : `<div class="nota" style="grid-column:1/-1">Ese cultivo aún no está en la app.</div>`;
-  $$("#f-cultivos .chip").forEach((el) => el.onclick = () => { form.cultivo = el.dataset.id; pintarCultivos(); });
+  $$("#f-cultivos .chip").forEach((el) => el.onclick = () => { form.cultivo = el.dataset.id; form.variedad = null; pintarCultivos(); pintarOpciones(); });
   const c = form.cultivo && cultivoPorId(form.cultivo);
-  const per = !!(c && c.perenne);
-  $("#anual-box").classList.toggle("hidden", per);
-  $("#perenne-box").classList.toggle("hidden", !per);
+  const per = !!(c && c.perenne), hidro = !!(c && c.hidro);
+  const ver = (id, v) => $(id).classList.toggle("hidden", !v);
+  ver("#area-wrap", !per && !hidro);
+  ver("#plantas-wrap", per || hidro);
+  ver("#fecha-wrap", !per);
+  ver("#edad-wrap", per);
+  ver("#suelo-box", !hidro);
+  ver("#metodo-box", !hidro);
+  ver("#hidro-box", hidro);
+  ver("#variedad-box", !!(c && c.variedades));
 }
 
 function opciones(sel, dic, actual, alElegir) {
@@ -207,6 +217,13 @@ function pintarOpciones() {
   opciones("#f-sol", SOL, form.sol, (k) => { form.sol = k; pintarOpciones(); });
   opciones("#f-suelo", SUELOS, form.suelo, (k) => { form.suelo = k; pintarOpciones(); });
   opciones("#f-metodo", METODOS, form.metodo, (k) => { form.metodo = k; pintarOpciones(); });
+  opciones("#f-sistema", SISTEMAS_HIDRO, form.sistema, (k) => { form.sistema = k; pintarOpciones(); });
+  const c = form.cultivo && cultivoPorId(form.cultivo);
+  if (c && c.variedades) {
+    $("#f-variedad").innerHTML = `<button type="button" class="opt ${!form.variedad ? "sel" : ""}" data-k="">No sé</button>` +
+      c.variedades.map((v) => `<button type="button" class="opt ${form.variedad === v.id ? "sel" : ""}" data-k="${v.id}">${v.nombre}</button>`).join("");
+    $$("#f-variedad .opt").forEach((b) => b.onclick = () => { form.variedad = b.dataset.k || null; pintarOpciones(); });
+  }
   $("#goteo-box").classList.toggle("hidden", form.metodo !== "goteo");
 }
 
@@ -303,7 +320,13 @@ function verPlan() {
     zona: $("#f-zona").value, sol: form.sol, suelo: form.suelo, ph: num("#f-ph"), mulch: $("#f-mulch").checked,
     metodo: form.metodo, goteros: num("#f-goteros"), caudal: num("#f-caudal"),
   };
-  if (c.perenne) {
+  if (c.variedades) cfg.variedad = form.variedad;
+  if (c.hidro) {
+    cfg.plantas = Math.round(num("#f-plantas") || 0); cfg.fecha = $("#f-fecha").value;
+    cfg.sistema = form.sistema; cfg.volumen = num("#f-volumen");
+    if (!cfg.plantas) return err("Escribe cuántas plantas tienes.");
+    if (!cfg.fecha) return err("Elige la fecha de siembra.");
+  } else if (c.perenne) {
     cfg.plantas = Math.round(num("#f-plantas") || 0); cfg.edad = $("#f-edad").value;
     if (!cfg.plantas) return err("Escribe cuántas plantas tienes.");
   } else {
@@ -333,7 +356,9 @@ function renderPlan() {
     if (k) Clima.pronostico(cfg.lat, cfg.lon).then((v) => { if (pronKey === k) { pron = v; if (location.hash === "#plan") renderPlan(); } }).catch(() => {});
   }
   const p = calcularPlan(cfg);
-  const cant = p.c.perenne ? `${cfg.plantas} planta(s) · ${EDADES[cfg.edad].nombre.toLowerCase()}` : `${cfg.area} m² · plantado el ${fmtAnio(p.inicio)}`;
+  const cant = p.hidro ? `${cfg.plantas} plantas · ${SISTEMAS_HIDRO[cfg.sistema].nombre} · ${p.volumen} L · sembrado el ${fmtAnio(p.inicio)}`
+    : p.c.perenne ? `${cfg.plantas} planta(s) · ${EDADES[cfg.edad].nombre.toLowerCase()}${p.variedad ? " · " + p.variedad.nombre : ""}`
+    : `${cfg.area} m² · plantado el ${fmtAnio(p.inicio)}`;
   const clima = cfg.modoClima === "auto" ? "🛰️ clima automático" : `✋ ${p.zona.nombre}`;
   $("#p-head").innerHTML = `<span class="e">${p.c.emoji}</span><div>
     <div class="t">${esc(p.c.nombre)}${cfg.lugar ? " · " + esc(cfg.lugar) : ""}</div>
@@ -351,6 +376,7 @@ function renderPlan() {
 const unidad = (p) => (p.c.perenne ? "planta" : "m²");
 
 function lineaRiego(p, r) {
+  if (r.hidro) return `💧 Cada 2 días: reponer ≈ <b>${litros(r.total)}</b> de agua y medir <b>EC ${r.ec[0]}–${r.ec[1]}</b> y <b>pH ${r.ph[0]}–${r.ph[1]}</b>`;
   if (!r.cada) return `🌧️ <b>No hace falta regar</b>: la lluvia cubre lo que consume la planta.`;
   const met = p.cfg.metodo;
   let como = "";
@@ -367,7 +393,8 @@ function cardAhora(p) {
   const r = rp || e.riego;
   let lluviaTxt = "";
   if (rp && rp.lluviaPronto >= 5) lluviaTxt = `<li>🌧️ <b>Se esperan ${r1(rp.lluviaPronto)} mm de lluvia en 48 h: no riegues hoy.</b></li>`;
-  const fertHoy = e.nut.prod.length ? `<li>🧪 Abonar ${e.ap.n > 1 ? `cada ${e.ap.cada} días` : "1 vez"}: ${e.nut.prod.map((x) => x.nombre.split(" (")[0]).join(", ")} <a href="#" data-ir="nutricion" class="lnk">ver dosis</a></li>` : "";
+  const fertHoy = p.hidro ? `<li>🧪 Solución al ${Math.round(e.nut.conc * 100)}%, cambiarla ${e.ap.n > 1 ? `cada ${e.ap.cada} días` : "1 vez en la etapa"} <a href="#" data-ir="nutricion" class="lnk">ver receta</a></li>`
+    : e.nut.prod.length ? `<li>🧪 Abonar ${e.ap.n > 1 ? `cada ${e.ap.cada} días` : "1 vez"}: ${e.nut.prod.map((x) => x.nombre.split(" (")[0]).join(", ")} <a href="#" data-ir="nutricion" class="lnk">ver dosis</a></li>` : "";
   const micro = e.micro.length ? `<li>🔬 Foliar: ${e.micro.map((m) => m.nombre).join(", ")}</li>` : "";
   return `<div class="card ahora"><h3>${e.icono} Ahora: ${e.nombre}</h3>
     ${p.ahora.dia != null ? `Día ${p.ahora.dia} desde la plantación` : "Etapa del año"} (hasta el ${fmt(e.hasta)}).
@@ -403,6 +430,8 @@ function alertas(p) {
   if (p.riesgoHongos) a.push(`🍄 Lugar húmedo o nublado: más riesgo de hongos. Deja más espacio, riega al pie y temprano, y revisa las hojas cada semana.`);
   const heladas = p.cfg.climaLoc ? p.cfg.climaLoc.heladas > 0 : p.zona.heladas;
   if (heladas && c.temp[0] > -3) a.push(`❄️ Tu zona tiene heladas: ${n} se daña bajo ${c.temp[0] <= 5 ? 0 : c.temp[0]} °C. Planta después de las heladas o cubre con manta térmica.`);
+  if (p.variedad && p.cfg.climaLoc && p.cfg.climaLoc.tMin < p.variedad.frio)
+    a.push(`🥶 En tu lugar la mínima del último año fue ${p.cfg.climaLoc.tMin} °C y la palta ${p.variedad.nombre} aguanta hasta ≈ ${p.variedad.frio} °C. Protege los árboles jóvenes o considera Bacon, Zutano o Negra de La Cruz.`);
   if (p.ph && p.ph.tipo !== "ok") a.push(`⚗️ Tu pH (${p.cfg.ph}) no es el ideal (${c.ph[0]}–${c.ph[1]}). Revisa la corrección en <a href="#" data-ir="nutricion" class="lnk">Nutrición</a>.`);
   return a.map((t) => `<div class="alerta">${t}</div>`).join("");
 }
@@ -410,8 +439,8 @@ function alertas(p) {
 function tabResumen(p) {
   const c = p.c;
   const t = c.temp;
-  const dens = c.perenne ? `Marco: ${c.distancia}` : `${c.distancia} (≈ ${c.plantasM2} plantas/m² → ${Math.round(c.plantasM2 * p.cfg.area)} plantas)`;
-  return cardAhora(p) + cardPronostico(p) + alertas(p) + `
+  const dens = c.perenne || p.hidro ? `${c.distancia}` : `${c.distancia} (≈ ${c.plantasM2} plantas/m² → ${Math.round(c.plantasM2 * p.cfg.area)} plantas)`;
+  return cardAhora(p) + cardPronostico(p) + alertas(p) + cardVariedad(p) + `
   <div class="card"><h3>🌡️ Condiciones óptimas</h3><div class="kv">
     <span class="k">🌡️</span><div><b>Temperatura ideal: ${t[1]}–${t[2]} °C</b><span class="nota">Sufre bajo ${t[0]} °C y sobre ${t[3]} °C</span></div>
     <span class="k">☀️</span><div><b>Luz</b>${c.luz}</div>
@@ -430,6 +459,7 @@ function tabResumen(p) {
 
 // ---------------- RIEGO ----------------
 function tabRiego(p) {
+  if (p.hidro) return tabRiegoHidro(p);
   const c = p.c, cfg = p.cfg, met = METODOS[cfg.metodo || "manguera"];
   const rp = p.ahora.etapa ? riegoPronostico(p, pron) : null;
   const fuente = p.clima.fuente === "auto" ? `datos reales de tu ubicación (${cfg.climaLoc.anio})` : `valores típicos de la zona ${p.zona.nombre.toLowerCase()}`;
@@ -479,6 +509,7 @@ function tabRiego(p) {
 
 // ---------------- NUTRICIÓN ----------------
 function tabNutricion(p) {
+  if (p.hidro) return tabNutricionHidro(p);
   const c = p.c, cfg = p.cfg, u = unidad(p), mult = p.mult;
   const nec = p.necesidad;
   const NOMS = { N: "Nitrógeno (N)", P: "Fósforo (P₂O₅)", K: "Potasio (K₂O)", Ca: "Calcio (CaO)", Mg: "Magnesio (MgO)" };
@@ -553,6 +584,104 @@ function tabNutricion(p) {
       ${DEFICIENCIAS.map((d) => `<p><b>${d.n}</b><br>${d.s}<br><span class="nota">Solución: ${d.f}</span></p>`).join("")}</details>
     <p class="pie">Dosis de referencia calculadas a partir de lo que extrae el cultivo. Lo ideal es un análisis de suelo. Lee siempre la etiqueta.</p>`;
 }
+
+// ---------------- PALTO: VARIEDAD ----------------
+function cardVariedad(p) {
+  const c = p.c;
+  if (!c.variedades) return "";
+  const v = p.variedad;
+  const tabla = `<table class="fert"><tr><th>Variedad</th><th>Flor</th><th>Cosecha</th><th class="q">Frío</th></tr>
+    ${c.variedades.map((x) => `<tr${v && v.id === x.id ? ' class="fila-sel"' : ""}><td><b>${x.nombre}</b></td><td>${x.flor}</td>
+      <td>${MESES[x.cosecha[0] - 1]}–${MESES[x.cosecha[1] - 1]}</td><td class="q">${x.frio} °C</td></tr>`).join("")}</table>`;
+  const polin = v && v.flor !== "—"
+    ? `<p>🐝 Flor tipo <b>${v.flor}</b>: cuaja mejor con un árbol de flor tipo <b>${v.flor === "A" ? "B" : "A"}</b> cerca (${c.variedades.filter((x) => x.flor === (v.flor === "A" ? "B" : "A")).map((x) => x.nombre).join(", ")}).</p>` : "";
+  return `<div class="card"><h3>🥑 ${v ? `Palta ${v.nombre}` : "Variedades de palta"}</h3>
+    ${v ? `<p>${v.nota}</p><p>🧺 Cosecha aprox.: <b>${MESES[v.cosecha[0] - 1]} a ${MESES[v.cosecha[1] - 1]}</b> · ❄️ aguanta hasta ≈ <b>${v.frio} °C</b></p>${polin}` :
+      `<p class="nota">Elige tu variedad en "Editar" para ver su cosecha, polinizante y resistencia al frío.</p>`}
+    <details><summary class="nota">Comparar variedades</summary>${tabla}
+    <p class="nota">Flor A y B: el palto abre sus flores como hembra y como macho en horarios distintos; mezclar tipos mejora la cuaja. Valores aproximados para Chile central.</p></details></div>`;
+}
+
+// ---------------- HIDROPONÍA ----------------
+function tabRiegoHidro(p) {
+  const cfg = p.cfg, sis = SISTEMAS_HIDRO[cfg.sistema || "nft"];
+  return `<div class="card"><h3>${sis.icono} Tu sistema: ${sis.nombre}</h3>
+      <p>${sis.bomba}</p>
+      <p class="nota">Estanque: <b>${p.volumen} L</b> para ${cfg.plantas} plantas. El agua que la planta consume se repone con agua sola; los nutrientes se renuevan al cambiar la solución.</p></div>
+    ${p.etapas.map((e) => {
+      const r = e.riego;
+      return `<div class="card etapa ${e.actual ? "actual" : ""}">
+        <b>${e.icono} ${e.nombre}</b>${e.actual ? '<span class="badge">AHORA</span>' : ""}
+        <div class="fechas">${fmt(e.desde)} → ${fmt(e.hasta)}</div>
+        <div class="riego-box">
+          <div><div class="n">${r.ec[0]}–${r.ec[1]}</div><div class="l">EC objetivo<br>(mS/cm)</div></div>
+          <div><div class="n">${r.ph[0]}–${r.ph[1]}</div><div class="l">pH<br>objetivo</div></div>
+          <div><div class="n">${litros(r.totalDia)}</div><div class="l">agua que<br>consume al día</div></div>
+        </div>
+        <p class="nota mt">≈ ${r1(r.porPlantaDia * 1000)} mL por planta al día. Cada 2 días repón ≈ <b>${litros(r.total)}</b> de agua.</p>
+      </div>`;
+    }).join("")}
+    <div class="card"><h3>📏 Cómo manejar la solución</h3><ul class="tareas">
+      <li><b>EC alta</b> (sobre el rango): agrega agua sola. <b>EC baja</b>: agrega solución nueva.</li>
+      <li><b>pH alto</b> (sobre 6,2): baja con ácido fosfórico o cítrico, de a pocas gotas. <b>pH bajo</b> (bajo 5,8): sube con hidróxido de potasio.</li>
+      <li>Mide primero la EC y después el pH, siempre con la solución bien mezclada.</li>
+      <li>Temperatura de la solución <b>18–22 °C</b>. Sobre 24 °C hay poco oxígeno y aparece la pudrición de raíz: sombrea o pinta de blanco el estanque.</li>
+      <li>Cambia toda la solución cada 2–3 semanas, y lava el sistema entre cultivos (agua con un poco de agua oxigenada).</li>
+      <li>Usa agua de buena calidad. Si la del grifo trae mucho cloro, déjala reposar 24 h.</li>
+    </ul></div>`;
+}
+
+function tabNutricionHidro(p) {
+  const cfg = p.cfg, vol = p.volumen;
+  const receta = (conc) => `<table class="fert"><tr><th>Producto</th><th class="q">por 100 L</th><th class="q">tu estanque</th></tr>
+    ${RECETA_HIDRO.map((r) => `<tr><td><b>${r.nombre}</b> <span class="badge ${r.tanque === "A" ? "azul" : ""}">${r.tanque}</span></td>
+      <td class="q">${peso(r.g / 10 * conc)}</td><td class="q">${peso(r.g * vol / 1000 * conc)}</td></tr>`).join("")}</table>`;
+  const ppm = Object.entries(PPM_HIDRO).map(([k, v]) => `${k} ${v}`).join(" · ");
+  return `<div class="card"><h3>🧪 Solución nutritiva para lechuga</h3>
+      <p class="nota">Receta al 100% (EC ≈ 1,8–2,0). Aporta en ppm: ${ppm}. Calculada para tu estanque de <b>${vol} L</b>.</p>
+      ${receta(1)}</div>
+    <div class="alerta">⚠️ Usa <b>dos estanques concentrados</b> o disuelve por separado: <b>A</b> (nitrato de calcio + hierro) y <b>B</b> (todo lo demás). Si mezclas el calcio concentrado con sulfatos o fosfatos se forma un precipitado blanco y la planta no lo aprovecha. Agrega primero A al agua, revuelve, y después B.</div>
+    <h2 class="sub">Por etapa</h2>
+    ${p.etapas.map((e) => `<div class="card etapa ${e.actual ? "actual" : ""}">
+      <b>${e.icono} ${e.nombre}</b>${e.actual ? '<span class="badge">AHORA</span>' : ""}
+      <div class="fechas">${fmt(e.desde)} → ${fmt(e.hasta)} · solución al <b>${Math.round(e.nut.conc * 100)}%</b> · EC ${e.riego.ec[0]}–${e.riego.ec[1]}</div>
+      ${receta(e.nut.conc)}
+      <div class="nota">📅 ${e.ap.n > 1 ? `Cambiar la solución ${e.ap.n} veces` : "Preparar 1 vez"}: ${e.fechasAp.map(fmt).join(", ")}</div></div>`).join("")}
+    <div class="card"><h3>🩺 Problemas típicos en hidroponía</h3>
+      <p><b>Puntas quemadas (tipburn)</b>: falta calcio en hojas nuevas por calor o poca ventilación. Ventila y sombrea.</p>
+      <p><b>Hojas nuevas amarillas con nervios verdes</b>: falta hierro, casi siempre por pH sobre 6,5.</p>
+      <p><b>Hojas viejas amarillas</b>: solución agotada (EC baja) → cámbiala.</p>
+      <p><b>Raíces cafés y con mal olor</b>: solución caliente o sin oxígeno → enfría y oxigena.</p></div>
+    <p class="pie">En casas de jardinería venden mezclas A y B listas para hidroponía; úsalas según su etiqueta si prefieres no preparar la receta.</p>`;
+}
+
+// ---------------- TEMA ----------------
+const TEMAS = { claro: "☀️ Claro", oscuro: "🌙 Oscuro", auto: "🌓 Automático" };
+const temaGuardado = () => localStorage.getItem("mihuerta.tema") || "auto";
+function sistemaOscuro() {
+  if (nativo() && Android.oscuroSistema) return Android.oscuroSistema();
+  return matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function aplicarTema() {
+  const t = temaGuardado();
+  const oscuro = t === "oscuro" || (t === "auto" && sistemaOscuro());
+  document.documentElement.dataset.tema = oscuro ? "oscuro" : "claro";
+  document.querySelector('meta[name="theme-color"]').content = oscuro ? "#1b5e20" : "#2e7d32";
+  $("#btn-tema").textContent = t === "auto" ? "🌓" : oscuro ? "🌙" : "☀️";
+  const seg = $("#f-tema");
+  if (seg) {
+    seg.innerHTML = Object.entries(TEMAS).map(([k, v]) => `<button type="button" data-k="${k}" class="${t === k ? "sel" : ""}">${v}</button>`).join("");
+    $$("#f-tema button").forEach((b) => b.onclick = () => { localStorage.setItem("mihuerta.tema", b.dataset.k); aplicarTema(); });
+  }
+}
+$("#btn-tema").onclick = () => {
+  const orden = ["auto", "claro", "oscuro"];
+  const sig = orden[(orden.indexOf(temaGuardado()) + 1) % 3];
+  localStorage.setItem("mihuerta.tema", sig); aplicarTema(); toast(TEMAS[sig]);
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", aplicarTema);
+window.alCambiarModoSistema = aplicarTema;
+aplicarTema();
 
 let soloVerde = localStorage.getItem("mihuerta.soloVerde") === "1";
 

@@ -143,6 +143,8 @@ function calcularPlan(cfg) {
   for (const n of ["N", "P", "K", "Ca", "Mg"]) necesidad[n] = c.perenne ? (c.req[n] || 0) * edadF : (c.req[n] || 0) * 0.1;
   const mult = c.perenne ? cfg.plantas : cfg.area;    // para pasar a total
 
+  if (c.hidro) return planHidro(cfg, c, clima, etapas, hoy);
+
   const out = etapas.map((e) => {
     const riego = riegoEtapa(cfg, c, e, clima);
     const nut = programaEtapa(c, e, necesidad, perfil, cfg);
@@ -171,13 +173,58 @@ function calcularPlan(cfg) {
     else if (cfg.ph > c.ph[1] + 0.2) ph = { tipo: "bajar", producto: "Azufre elemental en polvo", g: (cfg.ph - meta) * suelo.azufre, meta };
     else ph = { tipo: "ok", meta };
   }
-  return { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos, necesidad, mult, ph, edadF };
+  const variedad = c.variedades ? c.variedades.find((v) => v.id === cfg.variedad) || null : null;
+  return { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos, necesidad, mult, ph, edadF, variedad };
+}
+
+// ---------- Hidroponía ----------
+function volumenHidro(cfg) {
+  const sis = SISTEMAS_HIDRO[cfg.sistema || "nft"];
+  return cfg.volumen || Math.max(20, Math.round(cfg.plantas * sis.lPlanta));
+}
+
+function planHidro(cfg, c, clima, etapas, hoy) {
+  const sol = SOL[cfg.sol] || SOL.sol;
+  const vol = volumenHidro(cfg);
+  const out = etapas.map((e) => {
+    const cl = climaEntre(clima, e.desde, e.hasta);
+    // consumo de agua: referencia con ET0 = 5 mm/día, ajustado por clima y sombra (mínimo 40%: bajo techo)
+    const factor = Math.max(0.4, (cl.et0 / 5) * sol.factor);
+    const porPlantaDia = c.consumo[e.i] * factor;
+    const totalDia = porPlantaDia * cfg.plantas;
+    const cada = 2;
+    const riego = {
+      hidro: true, et0: cl.et0, kc: c.kc[e.i], etc: 0, lluviaEf: 0, neta: 0, cada, brutaMm: 0,
+      porPlanta: porPlantaDia * cada, total: totalDia * cada, porPlantaDia, totalDia, unidad: "planta",
+      semanal: totalDia * 7, minutosGoteo: 0, segManguera: 0,
+      ec: c.ec[e.i], ph: c.ph, volumen: vol,
+    };
+    // Solución: se prepara al empezar la etapa y se cambia cada ~14 días
+    const conc = c.conc[e.i];
+    const dias = Math.max(1, Math.round((e.hasta - e.desde) / DIA));
+    const n = Math.max(1, Math.round(dias / 14));
+    const ap = { n, cada: n > 1 ? Math.round(dias / n) : 0 };
+    const fechasAp = Array.from({ length: n }, (_, k) => sumarDias(e.desde, k * ap.cada));
+    // g por cambio de solución (todo el estanque). Se guarda como g "por planta" para reutilizar la vista.
+    const prod = RECETA_HIDRO.map((r) => ({ id: r.nombre, nombre: `${r.nombre} (estanque ${r.tanque})`, tanque: r.tanque,
+      g: (r.g * vol / 1000) * conc * n / cfg.plantas, gTotal: (r.g * vol / 1000) * conc }));
+    const nut = { nutr: { N: 0, P: 0, K: 0, Ca: 0, Mg: 0 }, prod, org: [], conc };
+    return { ...e, riego, nut, ap, fechasAp, micro: [], actual: hoy >= e.desde && hoy < e.hasta };
+  });
+  const inicio = out[0].desde, fin = out[out.length - 1].hasta;
+  let ahora;
+  if (hoy < inicio) ahora = { tipo: "antes", dias: Math.round((inicio - hoy) / DIA) };
+  else if (hoy >= fin) ahora = { tipo: "fin" };
+  else ahora = { tipo: "etapa", etapa: out.find((e) => e.actual), dia: Math.round((hoy - inicio) / DIA) };
+  const zona = ZONAS[cfg.zona] || ZONAS.valle;
+  return { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos: zona.hongos || sol.hongos,
+    necesidad: { N: 0, P: 0, K: 0, Ca: 0, Mg: 0 }, mult: cfg.plantas, ph: null, edadF: 1, hidro: true, volumen: vol };
 }
 
 // Riego de esta semana con el pronóstico real
 function riegoPronostico(plan, pron) {
   const e = plan.ahora.etapa;
-  if (!e || !pron) return null;
+  if (!e || !pron || plan.hidro) return null;
   const d = pron.dias.slice(0, 7);
   const et0 = d.reduce((s, x) => s + x.et0, 0) / d.length;
   const lluviaEf = d.reduce((s, x) => s + (x.lluvia > 2 ? x.lluvia * 0.8 : 0), 0) / d.length;

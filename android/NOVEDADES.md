@@ -1,16 +1,17 @@
-## Novedades de la versión 2.1.0
+## Novedades de la versión 2.2.0
 
-**📅 Agenda y calendario**
-- Nueva pestaña Agenda en cada cultivo: plantación, etapas, riegos, abonos y foliares con sus fechas.
-- Todo es editable: cambia fecha, título, nota o cada cuántos días se repite; oculta lo que no uses o vuelve al original.
-- Agrega tus propias tareas (podar, desmalezar, cosechar…) con repetición.
-- Marca las tareas como hechas. En el inicio aparece "Próximos días" con lo pendiente de todos tus cultivos.
-- **Vincular con Google Calendar**: agrega las tareas al calendario del teléfono, con aviso a la hora que elijas, y se actualiza solo cuando cambias algo.
+**💧 Lechuga hidropónica** (nueva categoría "Hidroponía")
+- Sistemas NFT (canales), raíz flotante o sustrato, con el manejo de la bomba o el aireador.
+- Receta de solución nutritiva en estanques A y B, calculada para el volumen de tu estanque.
+- EC y pH objetivo por etapa, agua que consume al día y cuánta reponer.
+- En la agenda: reponer agua y medir EC/pH cada 2 días, y cambiar la solución.
+- Problemas típicos: pudrición de raíz, puntas quemadas (tipburn) y algas.
 
-**📝 Notas**
-- Bitácora por cultivo: observaciones, cosechas (con kilos y rendimiento), plagas, riegos, abonos y labores.
+**🥑 Paltas**
+- Elige la variedad: Hass, Fuerte, Edranol, Bacon, Zutano o Negra de La Cruz.
+- Época de cosecha, tipo de flor (A/B) con su polinizante y resistencia al frío.
+- Aviso si en tu lugar hace más frío del que aguanta tu variedad, y evento de inicio de cosecha en la agenda.
 
-**🟢 Etiqueta verde**
-- Explicación de la franja de color de los plaguicidas (SAG): verde, azul, amarilla y roja.
-- Para cada plaga, opciones de etiqueta verde (Clase IV) y biológicas, con ejemplos comerciales del listado del SAG.
-- Interruptor para ver solo opciones de etiqueta verde, y una guía de uso seguro.
+**🎨 Modo claro, oscuro y automático**
+- Botón 🌓 arriba a la derecha, o en "Apariencia" en el inicio.
+- Automático sigue el modo del teléfono.

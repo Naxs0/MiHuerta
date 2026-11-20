@@ -40,7 +40,10 @@ const Calendario = (() => {
         nota: `Etapa: ${e.nombre} (hasta el ${e.hasta.getDate()}/${e.hasta.getMonth() + 1}).\n` + e.tareas.map((t) => "• " + t).join("\n") });
 
       const r = e.riego;
-      if (r.cada) {
+      if (r.hidro) {
+        ev.push({ key: `riego-${i}`, tipo: "riego", titulo: `💧 ${nombre}: reponer agua y medir EC/pH`, fecha: e.desde, hasta: mas(e.hasta, -1), cada: r.cada,
+          nota: `Reponer ≈ ${litros(r.total)} de agua (${litros(r.totalDia)} al día).\nEC objetivo ${r.ec[0]}–${r.ec[1]} mS/cm · pH ${r.ph[0]}–${r.ph[1]}.\nSi la EC sube, agrega agua sola; si baja, agrega solución.` });
+      } else if (r.cada) {
         let como = `${litros(r.porPlanta)} por planta`;
         if (cfg.metodo === "goteo") como += ` (goteo ${tiempo(r.minutosGoteo)})`;
         else if (!c.perenne) como += ` · ${r1(r.brutaMm)} L/m²`;
@@ -49,7 +52,12 @@ const Calendario = (() => {
       }
 
       const n = e.ap.n;
-      if (e.nut.prod.length) {
+      if (c.hidro) {
+        const det = `Solución al ${Math.round(e.nut.conc * 100)}% para ${litros(plan.volumen)}:\n` +
+          e.nut.prod.map((x) => `• ${x.nombre}: ${peso(x.gTotal)}`).join("\n") + `\nEC objetivo ${r.ec[0]}–${r.ec[1]} · pH ${r.ph[0]}–${r.ph[1]}.`;
+        e.fechasAp.forEach((f, k) => ev.push({ key: `abono-${i}-${k}`, tipo: "abono",
+          titulo: `🧪 ${nombre}: ${k === 0 ? "preparar" : "cambiar"} solución nutritiva`, fecha: f, nota: det }));
+      } else if (e.nut.prod.length) {
         const det = e.nut.prod.map((x) => `• ${x.nombre}: ${peso(x.g / n)}/${u} → ${peso((x.g / n) * mult)} en total`).join("\n");
         e.fechasAp.forEach((f, k) => ev.push({ key: `abono-${i}-${k}`, tipo: "abono",
           titulo: !c.perenne && i === 0 ? `🧪 Abonado de base ${nombre}` : `🧪 Abonar ${nombre}${n > 1 ? ` (${k + 1}/${n})` : ""}`,
@@ -66,6 +74,14 @@ const Calendario = (() => {
           titulo: `🔬 Foliar ${nombre}: ${e.micro.map((m) => m.nombre.split(" (")[0]).join(", ")}`, fecha: f, nota: det }));
       }
     });
+    // Variedad de palto: aviso de inicio de cosecha
+    if (plan.variedad) {
+      const v = plan.variedad, desfase = cfg.lat > 0 ? 6 : 0;
+      let f = new Date(plan.inicio.getFullYear(), (v.cosecha[0] - 1 + desfase) % 12, 1);
+      if (f < plan.inicio) f = new Date(f.getFullYear() + 1, f.getMonth(), 1);
+      ev.push({ key: "cosecha-var", tipo: "etapa", titulo: `${c.emoji} Inicia cosecha de palta ${v.nombre}`, fecha: f,
+        nota: `Temporada de cosecha aproximada de ${v.nombre}. Cosecha cuando la fruta alcance su madurez (materia seca); madura fuera del árbol.` });
+    }
     return ev;
   }
 

@@ -316,6 +316,26 @@ const CULTIVOS = [
       { nombre: "Mancha chocolate", hongo: true, sintomas: "Manchitas café-rojizas en hojas y tallos.", org: "Buena distancia, no exceso de agua.", quim: "Mancozeb." }] },
 
   // ============ VERDURAS DE HOJA ============
+  // ---------- HIDROPONÍA ----------
+  { id: "lechuga_hidro", nombre: "Lechuga hidropónica", emoji: "🥬", cat: "verdura", hidro: true, perfil: "hoja",
+    temp: [5, 15, 22, 26], ph: [5.8, 6.2], plantasM2: 20, zr: 0.1,
+    kc: [0.6, 0.8, 1.0, 1.0], req: { N: 0, P: 0, K: 0, Ca: 0, Mg: 0 }, micro: [],
+    // por etapa: EC objetivo (mS/cm), concentración de la receta y consumo de agua (L por planta al día, con ET0 = 5)
+    ec: [[0.8, 1.0], [1.2, 1.4], [1.4, 1.8], [1.6, 1.8]], conc: [0.5, 0.75, 1, 1], consumo: [0.03, 0.08, 0.18, 0.25],
+    suelo: "Sin suelo: las raíces crecen en solución nutritiva. Solución con pH 5,8–6,2 y entre 18 y 22 °C.",
+    luz: "Mucha luz, con sombra parcial en verano (malla 30–35%). Bajo techo o invernadero ideal.", necesitaSol: true,
+    distancia: "18–20 cm entre plantas en canales NFT o planchas flotantes (≈ 20–25 plantas/m²)",
+    epoca: "Todo el año bajo techo. En verano elegir variedades que no se 'suban' y enfriar la solución.",
+    etapas: [
+      E("Almácigo (germinación)", "🌱", 0, 15, "Sembrar en cubos de esponja o lana de roca húmedos", "Solo agua los primeros 5 días, luego solución al 50%"),
+      E("Trasplante al sistema", "🪴", 15, 25, "Pasar plantines con 3–4 hojas y raíz visible", "Solución al 75%"),
+      E("Crecimiento", "🌿", 25, 45, "Medir EC y pH cada 1–2 días", "Mantener la solución fresca y oxigenada"),
+      E("Formación de cabeza y cosecha", "🥬", 45, 60, "Cosechar con raíz para que dure más", "Lavar y desinfectar el sistema entre cultivos")],
+    plagas: ["pulgon", "trips", "mosquita", "mildiu",
+      { nombre: "Pudrición de raíz (Pythium)", hongo: true, sintomas: "Raíces cafés y blandas con mal olor, planta marchita aunque tenga agua.", org: "Solución bajo 22 °C, buena oxigenación, tapar la luz del estanque, Trichoderma o Bacillus subtilis.", quim: "Agua oxigenada para limpiar el sistema entre cultivos." },
+      { nombre: "Tipburn (puntas quemadas)", sintomas: "Bordes de las hojas nuevas quemados o cafés. Falta de calcio por calor y poca ventilación.", org: "Ventilar, sombrear en horas de calor, mantener el calcio en la solución.", quim: "Calcio foliar (cloruro de calcio 2–4 g/L)." },
+      { nombre: "Algas en canales y estanque", sintomas: "Agua y canales verdes, olor fuerte, raíces sucias.", org: "Tapar el estanque y canales de la luz, limpiar entre cultivos.", quim: "—" }] },
+
   { id: "lechuga", nombre: "Lechuga", emoji: "🥬", cat: "verdura", perfil: "hoja",
     temp: [5, 15, 20, 26], ph: [6.0, 7.0], plantasM2: 12, zr: 0.3, p: 0.3,
     kc: [0.7, 0.85, 1.0, 0.95], req: { N: 100, P: 50, K: 150, Ca: 30, Mg: 10 }, micro: ["Ca", "Mg"],
@@ -551,8 +571,23 @@ const CULTIVOS = [
       M("Reposo invernal", "❄️", 5, 8, "Poda de ramas viejas", "Agregar azufre si el pH sube")],
     plagas: ["botritis", "pajaros", "mosca_fruta", "pulgon", "escama"] },
 
-  { id: "palto", nombre: "Palto", emoji: "🥑", cat: "fruta", perenne: true, perfil: "siempre",
+  { id: "palto", nombre: "Palto (paltas)", emoji: "🥑", cat: "fruta", perenne: true, perfil: "siempre",
     temp: [-1, 18, 26, 35], ph: [5.5, 7.0], zr: 0.6, areaPlanta: 20,
+    // Variedades usadas en Chile. flor: tipo floral A/B (se polinizan mejor A con B). frio: temperatura mínima tolerada aprox.
+    variedades: [
+      { id: "hass", nombre: "Hass", flor: "A", cosecha: [8, 2], frio: -1.5,
+        nota: "La más plantada en Chile. Piel rugosa que se oscurece al madurar. Polinizantes: Edranol, Zutano o Fuerte." },
+      { id: "fuerte", nombre: "Fuerte", flor: "B", cosecha: [5, 8], frio: -2.5,
+        nota: "Piel verde y lisa, muy sabrosa. Tiende a producir año por medio (añerismo)." },
+      { id: "edranol", nombre: "Edranol", flor: "B", cosecha: [7, 10], frio: -1.5,
+        nota: "Piel verde, forma de pera. Buen polinizante de Hass." },
+      { id: "bacon", nombre: "Bacon", flor: "B", cosecha: [5, 7], frio: -4,
+        nota: "Muy resistente al frío; buena opción en zonas con heladas. Polinizante de Hass." },
+      { id: "zutano", nombre: "Zutano", flor: "B", cosecha: [4, 6], frio: -3,
+        nota: "Vigorosa y resistente al frío. Polinizante clásico de Hass." },
+      { id: "negra", nombre: "Negra de La Cruz", flor: "—", cosecha: [6, 9], frio: -4,
+        nota: "Variedad chilena (La Cruz, Valparaíso), piel negra y lisa, muy resistente al frío." },
+    ],
     kc: [0.7, 0.75, 0.8, 0.75, 0.6], req: { N: 300, P: 100, K: 300, Ca: 100, Mg: 50 }, micro: ["Zn", "B", "Fe"],
     suelo: "Muy bien drenado (no tolera agua estancada). Plantar en camellón.", luz: "Pleno sol, sin heladas.", necesitaSol: true,
     distancia: "5–6 m entre árboles",
@@ -664,4 +699,29 @@ const CULTIVOS = [
       { nombre: "Repilo", hongo: true, sintomas: "Manchas circulares tipo 'ojo de pavo' en hojas.", org: "Cobre en otoño y primavera.", quim: "Oxicloruro de cobre." }] },
 ];
 
-const CATEGORIAS = { todas: "Todas", verdura: "🥬 Verduras", fruta: "🍓 Frutas", hierba: "🌿 Hierbas" };
+const CATEGORIAS = { todas: "Todas", verdura: "🥬 Verduras", fruta: "🍓 Frutas", hierba: "🌿 Hierbas", hidro: "💧 Hidroponía" };
+
+// ---------- Hidroponía ----------
+// lPlanta: volumen de solución sugerido por planta
+const SISTEMAS_HIDRO = {
+  nft:      { nombre: "NFT (canales)",     icono: "🚰", lPlanta: 1.5,
+              bomba: "Bomba 15 min encendida / 15 min apagada de día; de noche 15 min cada hora. Pendiente de los canales 2–4%." },
+  flotante: { nombre: "Raíz flotante",     icono: "🛟", lPlanta: 6,
+              bomba: "Aireador (bomba de pecera) encendido las 24 horas. Profundidad del agua 15–20 cm." },
+  sustrato: { nombre: "Sustrato / macetas", icono: "🪴", lPlanta: 1,
+              bomba: "Goteo 4–8 veces al día, dejando que drene un 10–20% (no reutilizar el drenaje)." },
+};
+
+// Receta de solución nutritiva para lechuga: gramos por 1.000 L al 100% (EC ≈ 1,8–2,0 mS/cm).
+// Aporta aprox. N 194, P 40, K 214, Ca 152, Mg 44, Fe 2 ppm.
+// Estanque A y B por separado (el calcio no se mezcla concentrado con fosfatos ni sulfatos).
+const RECETA_HIDRO = [
+  { tanque: "A", nombre: "Nitrato de calcio", g: 800 },
+  { tanque: "A", nombre: "Quelato de hierro 6% (EDDHA o DTPA)", g: 35 },
+  { tanque: "B", nombre: "Nitrato de potasio (13-0-46)", g: 400 },
+  { tanque: "B", nombre: "Fosfato monoamónico MAP (12-61-0)", g: 150 },
+  { tanque: "B", nombre: "Sulfato de potasio (0-0-50)", g: 150 },
+  { tanque: "B", nombre: "Sulfato de magnesio (sal de Epsom)", g: 450 },
+  { tanque: "B", nombre: "Micronutrientes quelatados (mezcla B, Mn, Zn, Cu, Mo)", g: 15 },
+];
+const PPM_HIDRO = { N: 194, P: 40, K: 214, Ca: 152, Mg: 44, Fe: 2 };
