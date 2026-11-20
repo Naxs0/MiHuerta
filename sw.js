@@ -1,4 +1,4 @@
-const CACHE = "mihuerta-v5";
+const CACHE = "mihuerta-v6";
 const ARCHIVOS = ["./", "./index.html", "./styles.css", "./data.js", "./etiqueta.js", "./calendario.js", "./calc.js", "./clima.js", "./respaldo.js", "./app.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./lib/leaflet/leaflet.js", "./lib/leaflet/leaflet.css"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARCHIVOS))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => {

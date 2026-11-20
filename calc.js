@@ -28,11 +28,51 @@ function climaEntre(clima, desde, hasta) {
 }
 
 // ---------- Etapas con fechas ----------
+// Cuánto se alarga el ciclo con sombra/nubosidad y zonas frías
+function factorCiclo(cfg) {
+  const sol = SOL[cfg.sol] || SOL.sol;
+  return sol.ciclo * ((cfg.zona === "sur" || cfg.zona === "cordillera") ? 1.1 : 1);
+}
+
+// Cultivo ya plantado sin fecha conocida: se estima desde la etapa actual o la edad.
+// frac = cuánto lleva dentro de la etapa (0 = recién empezó, 0.5 = a la mitad, 0.9 = terminando)
+function estimarFechaPlantacion(c, cfg, etapaIdx, frac, semanas) {
+  const hoy = hoy0();
+  let dias;
+  if (semanas > 0) dias = semanas * 7;
+  else {
+    const e = c.etapas[etapaIdx];
+    dias = (e.dias[0] + (e.dias[1] - e.dias[0]) * frac) * factorCiclo(cfg);
+  }
+  return sumarDias(hoy, -Math.round(dias));
+}
+
+// Si se empezó a usar la app con el cultivo ya avanzado: qué hacer para ponerse al día
+function puestaAlDia(plan) {
+  const { c, cfg } = plan;
+  if (c.perenne || !cfg.desde) return null;
+  const desde = parseFecha(cfg.desde);
+  if (desde <= sumarDias(plan.inicio, 3)) return null;            // empezó a tiempo
+  const e = plan.etapas.find((x) => desde >= x.desde && desde < x.hasta) || plan.etapas[plan.etapas.length - 1];
+  const dias = Math.round((desde - plan.inicio) / DIA);
+  if (plan.hidro) {
+    return { hidro: true, etapa: e, dias, fecha: desde, conc: e.nut.conc,
+      productos: e.nut.prod.map((x) => ({ nombre: x.nombre, total: x.gTotal })) };
+  }
+  // Abono de recuperación: 50% del fósforo y potasio del abonado de base, en forma soluble
+  const base = plan.etapas[0].nut.nutr;
+  const P = base.P * 0.5, K = base.K * 0.5;
+  const productos = [];
+  if (P > 0.3) productos.push({ nombre: FERT.map.nombre, g: P / 0.61 });
+  if (K > 0.3) productos.push({ nombre: FERT.sk.nombre, g: K / 0.5 });
+  productos.forEach((x) => { x.total = x.g * plan.mult; });
+  return { etapa: e, dias, fecha: desde, productos, compost: c.perenne ? 0 : 1000 };
+}
+
 function etapasConFechas(cfg, c) {
   const hoy = hoy0();
   if (!c.perenne) {
-    const sol = SOL[cfg.sol];
-    const f = sol.ciclo * ((cfg.zona === "sur" || cfg.zona === "cordillera") ? 1.1 : 1);
+    const f = factorCiclo(cfg);
     const inicio = parseFecha(cfg.fecha);
     return c.etapas.map((e, i) => ({ ...e, i,
       desde: sumarDias(inicio, e.dias[0] * f), hasta: sumarDias(inicio, e.dias[1] * f) }));
@@ -174,7 +214,9 @@ function calcularPlan(cfg) {
     else ph = { tipo: "ok", meta };
   }
   const variedad = c.variedades ? c.variedades.find((v) => v.id === cfg.variedad) || null : null;
-  return { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos, necesidad, mult, ph, edadF, variedad };
+  const plan = { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos, necesidad, mult, ph, edadF, variedad };
+  plan.puesta = puestaAlDia(plan);
+  return plan;
 }
 
 // ---------- Hidroponía ----------
@@ -217,8 +259,10 @@ function planHidro(cfg, c, clima, etapas, hoy) {
   else if (hoy >= fin) ahora = { tipo: "fin" };
   else ahora = { tipo: "etapa", etapa: out.find((e) => e.actual), dia: Math.round((hoy - inicio) / DIA) };
   const zona = ZONAS[cfg.zona] || ZONAS.valle;
-  return { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos: zona.hongos || sol.hongos,
+  const plan = { c, cfg, clima, etapas: out, ahora, inicio, fin, zona, sol, riesgoHongos: zona.hongos || sol.hongos,
     necesidad: { N: 0, P: 0, K: 0, Ca: 0, Mg: 0 }, mult: cfg.plantas, ph: null, edadF: 1, hidro: true, volumen: vol };
+  plan.puesta = puestaAlDia(plan);
+  return plan;
 }
 
 // Riego de esta semana con el pronóstico real

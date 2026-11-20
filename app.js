@@ -152,14 +152,14 @@ async function revisarVersion(forzar) {
 const form = {};
 function formVacio() {
   Object.assign(form, { editId: null, cultivo: null, cat: "todas", sol: "sol", suelo: "franco", metodo: "manguera",
-    modoClima: "auto", lat: null, lon: null, climaLoc: null, sistema: "nft", variedad: null });
+    modoClima: "auto", lat: null, lon: null, climaLoc: null, sistema: "nft", variedad: null, plantado: "hoy", etapa: null, avance: 0.5 });
 }
 
 function prepararForm(cfg) {
   formVacio();
   $("#f-buscar").value = ""; $("#f-lugar").value = ""; $("#f-area").value = 10; $("#f-plantas").value = 1;
   $("#f-fecha").value = hoyISO(); $("#f-zona").value = "valle"; $("#f-edad").value = "adulta";
-  $("#f-ph").value = ""; $("#f-mulch").checked = false; $("#f-goteros").value = ""; $("#f-caudal").value = ""; $("#f-volumen").value = "";
+  $("#f-ph").value = ""; $("#f-mulch").checked = false; $("#f-goteros").value = ""; $("#f-caudal").value = ""; $("#f-volumen").value = ""; $("#f-semanas").value = "";
   $("#ubic-estado").textContent = ""; $("#mapa-box").classList.add("hidden");
   if (cfg) {
     Object.assign(form, { editId: cfg.id, cultivo: cfg.cultivo, sol: cfg.sol, suelo: cfg.suelo, metodo: cfg.metodo || "manguera",
@@ -168,7 +168,7 @@ function prepararForm(cfg) {
     if (cfg.volumen) $("#f-volumen").value = cfg.volumen;
     $("#f-lugar").value = cfg.lugar || ""; $("#f-zona").value = cfg.zona;
     if (cfg.area) $("#f-area").value = cfg.area;
-    if (cfg.fecha) $("#f-fecha").value = cfg.fecha;
+    if (cfg.fecha) { $("#f-fecha").value = cfg.fecha; form.plantado = cfg.fecha < hoyISO() ? "fecha" : "hoy"; }
     if (cfg.plantas) $("#f-plantas").value = cfg.plantas;
     if (cfg.edad) $("#f-edad").value = cfg.edad;
     if (cfg.ph) $("#f-ph").value = cfg.ph;
@@ -181,7 +181,7 @@ function prepararForm(cfg) {
   pintarTodo();
 }
 
-function pintarTodo() { pintarCats(); pintarCultivos(); pintarOpciones(); pintarModo(); }
+function pintarTodo() { pintarCats(); pintarCultivos(); pintarOpciones(); pintarModo(); pintarPlantado(); }
 
 function pintarCats() {
   $("#f-cats").innerHTML = Object.entries(CATEGORIAS).map(([k, v]) =>
@@ -196,7 +196,7 @@ function pintarCultivos() {
   $("#f-cultivos").innerHTML = lista.length
     ? lista.map((c) => `<div class="chip ${form.cultivo === c.id ? "sel" : ""}" data-id="${c.id}"><span class="e">${c.emoji}</span>${c.nombre}</div>`).join("")
     : `<div class="nota" style="grid-column:1/-1">Ese cultivo aún no está en la app.</div>`;
-  $$("#f-cultivos .chip").forEach((el) => el.onclick = () => { form.cultivo = el.dataset.id; form.variedad = null; pintarCultivos(); pintarOpciones(); });
+  $$("#f-cultivos .chip").forEach((el) => el.onclick = () => { form.cultivo = el.dataset.id; form.variedad = null; form.etapa = null; pintarCultivos(); pintarOpciones(); pintarPlantado(); });
   const c = form.cultivo && cultivoPorId(form.cultivo);
   const per = !!(c && c.perenne), hidro = !!(c && c.hidro);
   const ver = (id, v) => $(id).classList.toggle("hidden", !v);
@@ -216,7 +216,7 @@ function opciones(sel, dic, actual, alElegir) {
   $$(`${sel} .opt`).forEach((b) => b.onclick = () => alElegir(b.dataset.k));
 }
 function pintarOpciones() {
-  opciones("#f-sol", SOL, form.sol, (k) => { form.sol = k; pintarOpciones(); });
+  opciones("#f-sol", SOL, form.sol, (k) => { form.sol = k; pintarOpciones(); pintarPlantado(); });
   opciones("#f-suelo", SUELOS, form.suelo, (k) => { form.suelo = k; pintarOpciones(); });
   opciones("#f-metodo", METODOS, form.metodo, (k) => { form.metodo = k; pintarOpciones(); });
   opciones("#f-sistema", SISTEMAS_HIDRO, form.sistema, (k) => { form.sistema = k; pintarOpciones(); });
@@ -252,6 +252,52 @@ function pintarModo() {
     info.innerHTML = `Elige tu zona. El riego se calcula con valores típicos de esa zona.`;
     info.classList.remove("hidden");
   }
+}
+
+// ----- ¿Cuándo se plantó? -----
+const PLANTADO = { hoy: "🌱 Hoy / por plantar", fecha: "📅 Ya está, sé la fecha", etapa: "🔍 Ya está, no sé la fecha" };
+const AVANCES = [[0.1, "Recién empezó"], [0.5, "A la mitad"], [0.9, "Casi terminando"]];
+
+function fechaEstimadaForm() {
+  const c = form.cultivo && cultivoPorId(form.cultivo);
+  if (!c || c.perenne) return null;
+  const sem = parseFloat($("#f-semanas").value);
+  if (!(sem > 0) && form.etapa == null) return null;
+  return estimarFechaPlantacion(c, { sol: form.sol, zona: $("#f-zona").value }, form.etapa ?? 0, form.avance, sem > 0 ? sem : 0);
+}
+
+function pintarPlantado() {
+  const c = form.cultivo && cultivoPorId(form.cultivo);
+  $("#f-plantado").innerHTML = Object.entries(PLANTADO).map(([k, v]) =>
+    `<button type="button" data-k="${k}" class="${form.plantado === k ? "sel" : ""}">${v}</button>`).join("");
+  $$("#f-plantado button").forEach((b) => b.onclick = () => {
+    form.plantado = b.dataset.k;
+    if (form.plantado === "hoy") $("#f-fecha").value = hoyISO();
+    pintarPlantado();
+  });
+  $("#pl-fecha").classList.toggle("hidden", form.plantado === "etapa");
+  $("#pl-etapa").classList.toggle("hidden", form.plantado !== "etapa");
+  const fi = $("#f-fecha");
+  if (form.plantado === "fecha") { fi.max = hoyISO(); fi.removeAttribute("min"); } else { fi.min = hoyISO(); fi.removeAttribute("max"); }
+  if (form.plantado === "hoy" && fi.value < hoyISO()) fi.value = hoyISO();
+
+  const notaF = $("#pl-fecha-nota");
+  if (form.plantado === "fecha" && fi.value) {
+    const dias = Math.round((hoy0() - parseFecha(fi.value)) / DIA);
+    notaF.innerHTML = dias > 0 ? `Lleva <b>${dias} días</b> plantado. Las tareas de antes de hoy no se marcarán como pendientes.` : "";
+  } else notaF.textContent = form.plantado === "hoy" ? "Puedes elegir una fecha futura si aún no lo plantas." : "";
+
+  if (form.plantado !== "etapa") return;
+  if (!c) { $("#f-etapa").innerHTML = `<div class="nota">Primero elige el cultivo.</div>`; $("#pl-estimado").textContent = ""; return; }
+  $("#f-etapa").innerHTML = c.etapas.map((e, i) =>
+    `<button type="button" class="opt ${form.etapa === i ? "sel" : ""}" data-i="${i}"><span class="e">${e.icono}</span>${e.nombre}</button>`).join("");
+  $$("#f-etapa .opt").forEach((b) => b.onclick = () => { form.etapa = +b.dataset.i; $("#f-semanas").value = ""; pintarPlantado(); });
+  $("#f-avance").innerHTML = AVANCES.map(([v, t]) => `<button type="button" data-v="${v}" class="${form.avance === v ? "sel" : ""}">${t}</button>`).join("");
+  $$("#f-avance button").forEach((b) => b.onclick = () => { form.avance = +b.dataset.v; pintarPlantado(); });
+  const f = fechaEstimadaForm();
+  $("#pl-estimado").innerHTML = f
+    ? `📅 Fecha de plantación estimada: <b>${fmtAnio(f)}</b> (hace ${Math.round((hoy0() - f) / DIA)} días).<br><span class="nota">Lo anterior a hoy no aparecerá como pendiente, y te daré un plan de puesta al día.</span>`
+    : `Elige la etapa en que va la planta, o escribe su edad en semanas.`;
 }
 
 async function setUbicacion(lat, lon) {
@@ -323,6 +369,19 @@ function verPlan() {
     metodo: form.metodo, goteros: num("#f-goteros"), caudal: num("#f-caudal"),
   };
   if (c.variedades) cfg.variedad = form.variedad;
+  // Fecha de plantación según "¿Cuándo se plantó?"
+  if (!c.perenne) {
+    if (form.plantado === "etapa") {
+      const f = fechaEstimadaForm();
+      if (!f) return err("Elige en qué etapa va la planta (o su edad en semanas).");
+      $("#f-fecha").value = Calendario.iso(f);
+      cfg.fechaEstimada = true;
+    } else if (form.plantado === "fecha" && $("#f-fecha").value > hoyISO()) {
+      return err("Esa fecha es futura: elige \"Hoy / por plantar\".");
+    }
+  }
+  const prevCfg = form.editId ? cargar().find((x) => x.id === form.editId) : null;
+  cfg.desde = prevCfg ? (prevCfg.desde || null) : hoyISO();   // desde cuándo se usa la app con este cultivo
   if (c.hidro) {
     cfg.plantas = Math.round(num("#f-plantas") || 0); cfg.fecha = $("#f-fecha").value;
     cfg.sistema = form.sistema; cfg.volumen = num("#f-volumen");
@@ -399,7 +458,7 @@ function cardAhora(p) {
     : e.nut.prod.length ? `<li>🧪 Abonar ${e.ap.n > 1 ? `cada ${e.ap.cada} días` : "1 vez"}: ${e.nut.prod.map((x) => x.nombre.split(" (")[0]).join(", ")} <a href="#" data-ir="nutricion" class="lnk">ver dosis</a></li>` : "";
   const micro = e.micro.length ? `<li>🔬 Foliar: ${e.micro.map((m) => m.nombre).join(", ")}</li>` : "";
   return `<div class="card ahora"><h3>${e.icono} Ahora: ${e.nombre}</h3>
-    ${p.ahora.dia != null ? `Día ${p.ahora.dia} desde la plantación` : "Etapa del año"} (hasta el ${fmt(e.hasta)}).
+    ${p.ahora.dia != null ? `Día ${p.ahora.dia} desde la plantación${p.cfg.fechaEstimada ? " (fecha estimada)" : ""}` : "Etapa del año"} (hasta el ${fmt(e.hasta)}).
     <ul class="tareas">${lluviaTxt}<li>${lineaRiego(p, r)}${rp ? ' <span class="badge azul">según pronóstico</span>' : ""}</li>
     ${fertHoy}${micro}${e.tareas.map((t) => `<li>${t}</li>`).join("")}</ul></div>`;
 }
@@ -442,7 +501,7 @@ function tabResumen(p) {
   const c = p.c;
   const t = c.temp;
   const dens = c.perenne || p.hidro ? `${c.distancia}` : `${c.distancia} (≈ ${c.plantasM2} plantas/m² → ${Math.round(c.plantasM2 * p.cfg.area)} plantas)`;
-  return cardAhora(p) + cardPronostico(p) + alertas(p) + cardVariedad(p) + `
+  return cardAhora(p) + cardPuesta(p) + cardPronostico(p) + alertas(p) + cardVariedad(p) + `
   <div class="card"><h3>🌡️ Condiciones óptimas</h3><div class="kv">
     <span class="k">🌡️</span><div><b>Temperatura ideal: ${t[1]}–${t[2]} °C</b><span class="nota">Sufre bajo ${t[0]} °C y sobre ${t[3]} °C</span></div>
     <span class="k">☀️</span><div><b>Luz</b>${c.luz}</div>
@@ -511,7 +570,7 @@ function tabRiego(p) {
 
 // ---------------- NUTRICIÓN ----------------
 function tabNutricion(p) {
-  if (p.hidro) return tabNutricionHidro(p);
+  if (p.hidro) return cardPuesta(p) + tabNutricionHidro(p);
   const c = p.c, cfg = p.cfg, u = unidad(p), mult = p.mult;
   const nec = p.necesidad;
   const NOMS = { N: "Nitrógeno (N)", P: "Fósforo (P₂O₅)", K: "Potasio (K₂O)", Ca: "Calcio (CaO)", Mg: "Magnesio (MgO)" };
@@ -574,7 +633,7 @@ function tabNutricion(p) {
     ? `<div class="alerta">💧 <b>Fertirriego:</b> disuelve la dosis de cada aplicación en el estanque y aplícala en la segunda mitad del riego. <b>No mezcles nitrato de calcio con sulfatos ni con MAP</b> en el mismo estanque (se forma yeso o fosfato de calcio que tapa los goteros): úsalos en riegos distintos.</div>`
     : `<div class="alerta">🥄 1 cucharada sopera ≈ 12–15 g de fertilizante granulado. Espárcelo alrededor de la planta (a 10 cm del tallo), incorpóralo levemente y riega. También puedes disolverlo en la regadera. No mezcles nitrato de calcio con sulfatos o MAP en el mismo balde.</div>`;
 
-  return `<div class="card"><h3>📊 Necesidad total ${c.perenne ? "al año" : "de la temporada"}</h3>${tabla}
+  return cardPuesta(p) + `<div class="card"><h3>📊 Necesidad total ${c.perenne ? "al año" : "de la temporada"}</h3>${tabla}
     <p class="nota mt">${c.perenne ? `Para una planta ${EDADES[cfg.edad].nombre.toLowerCase()}.` : ""} Reparto por etapa según lo que la planta absorbe en cada momento.</p></div>
     ${phCard}
     <div class="card"><h3>🧱 Base orgánica</h3><p>${compost}</p><p class="nota">La materia orgánica mejora la retención de agua y la vida del suelo; los fertilizantes de abajo completan lo que falta.</p></div>
@@ -585,6 +644,29 @@ function tabNutricion(p) {
     <details class="card"><summary><b>🩺 Guía de deficiencias (¿qué le falta a mi planta?)</b></summary>
       ${DEFICIENCIAS.map((d) => `<p><b>${d.n}</b><br>${d.s}<br><span class="nota">Solución: ${d.f}</span></p>`).join("")}</details>
     <p class="pie">Dosis de referencia calculadas a partir de lo que extrae el cultivo. Lo ideal es un análisis de suelo. Lee siempre la etiqueta.</p>`;
+}
+
+// ---------------- PUESTA AL DÍA ----------------
+function cardPuesta(p) {
+  const pu = p.puesta;
+  if (!pu) return "";
+  const u = unidad(p);
+  const pasadas = p.etapas.filter((e) => e.hasta <= pu.fecha).map((e) => e.nombre.toLowerCase());
+  let receta;
+  if (pu.hidro) {
+    receta = `<p>🧪 <b>Prepara ya la solución de la etapa actual</b> (${Math.round(pu.conc * 100)}%, EC ${pu.etapa.riego.ec[0]}–${pu.etapa.riego.ec[1]}) para tus ${p.volumen} L:</p>
+      <ul class="tareas">${pu.productos.map((x) => `<li>${x.nombre}: <b>${peso(x.total)}</b></li>`).join("")}</ul>`;
+  } else {
+    receta = pu.productos.length ? `<p>🧪 <b>Si no abonaste al plantar</b>, aplica una vez este abono de puesta al día (la mitad del abonado de base, en forma soluble):</p>
+      <ul class="tareas">${pu.productos.map((x) => `<li>${x.nombre}: <b>${peso(x.g)}/${u}</b> → ${peso(x.total)} en total</li>`).join("")}
+      <li>Compost: ${peso(pu.compost)}/${u} en superficie, alrededor de las plantas (sin enterrarlo cerca de las raíces).</li></ul>
+      <p class="nota">Si ya abonaste al plantar, no hace falta: sigue con el programa normal desde la etapa actual.</p>` : "";
+  }
+  return `<div class="card puesta"><h3>🧭 Puesta al día</h3>
+    <p>Empezaste a usar la app con el cultivo en <b>${pu.etapa.nombre.toLowerCase()}</b> (día ${pu.dias}${p.cfg.fechaEstimada ? ", estimado" : ""}).
+    ${pasadas.length ? `Las etapas anteriores (${pasadas.join(", ")}) ya pasaron: sus tareas no aparecen como pendientes.` : ""}</p>
+    ${receta}
+    <p class="nota">Revisa la pestaña Plagas: con el cultivo avanzado conviene una revisión completa de hojas y tallos.</p></div>`;
 }
 
 // ---------------- PALTO: VARIEDAD ----------------
@@ -864,7 +946,7 @@ function persistirActual(resync) {
 // =====================================================================
 let calFiltro = "proximos";
 // Solo abonos, foliares y tareas propias de las últimas 2 semanas cuentan como atrasados
-const puedeAtrasarse = (e, hoy) => e.tipo !== "etapa" && e.fecha < hoy && e.fecha >= sumarDias(hoy, -14);
+const puedeAtrasarse = (e, hoy) => !e.previo && e.tipo !== "etapa" && e.fecha < hoy && e.fecha >= sumarDias(hoy, -14);
 const fechaLarga = (d) => `${DIAS_SEM[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]}`;
 
 function tabCalendario(p) {
@@ -891,7 +973,7 @@ function tabCalendario(p) {
     if (calFiltro === "hechos") return !e.cada && e.hecho;
     if (calFiltro === "todos") return true;
     if (e.cada) return !!prox;
-    if (e.hecho) return false;
+    if (e.hecho || e.previo) return false;
     return e.fecha >= hoy || puedeAtrasarse(e, hoy);   // próximos + atrasados recientes
   });
 
@@ -907,9 +989,10 @@ function tabCalendario(p) {
       }
     } else {
       atrasado = !e.hecho && puedeAtrasarse(e, hoy);
-      cuando = fechaLarga(e.fecha) + (atrasado ? ' <span class="badge rojo">atrasado</span>' : "");
+      cuando = fechaLarga(e.fecha) + (atrasado ? ' <span class="badge rojo">atrasado</span>' : "") +
+        (e.previo ? ' <span class="badge gris">antes de usar la app</span>' : "");
     }
-    return `<div class="ev t-${e.tipo} ${hecho ? "hecho" : ""}">
+    return `<div class="ev t-${e.tipo} ${hecho ? "hecho" : ""} ${e.previo ? "previo" : ""}">
       <input type="checkbox" class="chk" data-ok="${okey}" ${hecho ? "checked" : ""} ${e.cada && !prox ? "disabled" : ""}>
       <div class="evt" data-edit="${e.key}"><b>${esc(e.titulo)}</b>${e.editado ? " ✏️" : ""}<div class="nota">${cuando}</div></div>
     </div>`;
@@ -1185,6 +1268,9 @@ $("#btn-nuevo").onclick = () => { prepararForm(null); location.hash = "#nuevo"; 
 $("#btn-back").onclick = () => history.back();
 $("#btn-ver").onclick = verPlan;
 $("#f-buscar").oninput = pintarCultivos;
+$("#f-fecha").onchange = pintarPlantado;
+$("#f-semanas").oninput = pintarPlantado;
+$("#f-zona").addEventListener("change", pintarPlantado);
 $("#f-zona").innerHTML = Object.entries(ZONAS).map(([k, v]) => `<option value="${k}">${v.nombre}</option>`).join("");
 $("#f-edad").innerHTML = Object.entries(EDADES).map(([k, v]) => `<option value="${k}">${v.nombre}</option>`).join("");
 $$(".tabs button").forEach((b) => b.onclick = () => { tabActual = b.dataset.tab; renderPlan(); });

@@ -181,3 +181,11 @@ textarea.inp { resize: vertical; font-family: inherit; }
 .verde-op:first-of-type { border-top: 0; }
 details .verde-op { border-top: 1px solid var(--borde); }
 .toggle { padding-top: 6px; font-weight: 600; }
+
+/* ---------- puesta al día ---------- */
+.puesta { border: 2px solid var(--azul); }
+.badge.gris { background: var(--gris); }
+.ev.previo { opacity: .55; }
+.seg-wrap { flex-wrap: wrap; }
+.seg-wrap button { flex: 1 1 auto; }
+.opts-etapa { grid-template-columns: repeat(2, 1fr); }

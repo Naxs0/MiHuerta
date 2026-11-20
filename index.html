@@ -119,10 +119,26 @@
           <input id="f-area" class="inp" type="number" min="1" step="1" value="10" inputmode="numeric"></div>
         <div id="plantas-wrap" class="hidden"><label class="lbl" for="f-plantas">7. Nº de plantas</label>
           <input id="f-plantas" class="inp" type="number" min="1" step="1" value="1" inputmode="numeric"></div>
-        <div id="fecha-wrap"><label class="lbl" for="f-fecha">8. Fecha de plantación</label>
-          <input id="f-fecha" class="inp" type="date"></div>
         <div id="edad-wrap" class="hidden"><label class="lbl" for="f-edad">8. Edad</label>
           <select id="f-edad" class="inp"></select></div>
+      </div>
+
+      <div id="fecha-wrap">
+        <label class="lbl">8. ¿Cuándo se plantó?</label>
+        <div id="f-plantado" class="seg seg-wrap"></div>
+        <div id="pl-fecha">
+          <input id="f-fecha" class="inp" type="date">
+          <div id="pl-fecha-nota" class="nota mt"></div>
+        </div>
+        <div id="pl-etapa" class="hidden">
+          <span class="mini">¿En qué etapa va ahora?</span>
+          <div id="f-etapa" class="opts opts-etapa"></div>
+          <span class="mini mt">¿Cuánto lleva en esa etapa?</span>
+          <div id="f-avance" class="seg seg-wrap"></div>
+          <span class="mini mt">…o si sabes la edad aproximada de la planta:</span>
+          <div class="row2"><input id="f-semanas" class="inp" type="number" min="1" max="60" step="1" placeholder="Semanas" inputmode="numeric"><div></div></div>
+          <div id="pl-estimado" class="clima-info mt"></div>
+        </div>
       </div>
 
       <p id="f-error" class="error hidden"></p>

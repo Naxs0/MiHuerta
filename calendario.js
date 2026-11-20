@@ -82,18 +82,34 @@ const Calendario = (() => {
       ev.push({ key: "cosecha-var", tipo: "etapa", titulo: `${c.emoji} Inicia cosecha de palta ${v.nombre}`, fecha: f,
         nota: `Temporada de cosecha aproximada de ${v.nombre}. Cosecha cuando la fruta alcance su madurez (materia seca); madura fuera del árbol.` });
     }
+    // Empezó a usar la app con el cultivo avanzado: tarea de puesta al día
+    const pu = plan.puesta;
+    if (pu) {
+      if (pu.hidro) {
+        ev.push({ key: "recupera", tipo: "abono", titulo: `🧪 ${nombre}: preparar solución de la etapa actual (${Math.round(pu.conc * 100)}%)`, fecha: pu.fecha,
+          nota: `Para ${litros(plan.volumen)}:\n` + pu.productos.map((x) => `• ${x.nombre}: ${peso(x.total)}`).join("\n") });
+      } else if (pu.productos.length) {
+        ev.push({ key: "recupera", tipo: "abono", titulo: `🧪 Abono de puesta al día ${nombre} (si no abonaste al plantar)`, fecha: pu.fecha,
+          nota: pu.productos.map((x) => `• ${x.nombre}: ${peso(x.g)}/${u} → ${peso(x.total)} en total`).join("\n") +
+            `\nDisuélvelo en el riego o espárcelo alrededor de las plantas y riega. Si ya abonaste al plantar, oculta esta tarea.` });
+      }
+    }
     return ev;
   }
 
   // Eventos con los cambios del usuario + tareas propias
   function eventos(plan, incluirOcultos) {
     const cal = datos(plan.cfg);
+    const inicioUso = desdeUso(plan.cfg);
     const out = base(plan).map((e) => {
       const a = cal.ajustes[e.key] || {};
+      const fecha = a.fecha ? deIso(a.fecha) : e.fecha;
+      const cada = a.cada ?? e.cada;
       return { ...e, original: { titulo: e.titulo, fecha: e.fecha, nota: e.nota, cada: e.cada, hasta: e.hasta },
-        titulo: a.titulo ?? e.titulo, nota: a.nota ?? e.nota,
-        fecha: a.fecha ? deIso(a.fecha) : e.fecha,
-        cada: a.cada ?? e.cada, hasta: a.hasta ? deIso(a.hasta) : e.hasta,
+        titulo: a.titulo ?? e.titulo, nota: a.nota ?? e.nota, fecha, cada,
+        hasta: a.hasta ? deIso(a.hasta) : e.hasta,
+        // previo: ocurrió antes de empezar a usar la app (no cuenta como pendiente)
+        previo: !!(inicioUso && !cada && fecha < inicioUso),
         oculto: !!a.oculto, hecho: !!a.hecho, editado: !!(a.titulo || a.nota || a.fecha || a.cada || a.hasta) };
     });
     for (const p of cal.propios) {
@@ -105,8 +121,12 @@ const Calendario = (() => {
   }
 
   // Fechas concretas entre dos días (expande los repetidos)
-  function ocurrencias(cfg, evs, desde, hasta) {
+  function desdeUso(cfg) { return cfg.desde ? deIso(cfg.desde) : null; }
+
+  function ocurrencias(cfg, evs, desde0, hasta) {
     const cal = datos(cfg);
+    const inicioUso = desdeUso(cfg);
+    const desde = inicioUso && inicioUso > desde0 ? inicioUso : desde0;   // nada antes de empezar a usar la app
     const res = [];
     for (const e of evs) {
       if (e.cada) {
@@ -153,14 +173,28 @@ const Calendario = (() => {
   const icsTexto = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
   const plegar = (l) => { const o = []; while (l.length > 74) { o.push(l.slice(0, 74)); l = " " + l.slice(74); } o.push(l); return o.join("\r\n"); };
 
-  function filtrar(evs, tipos) { return evs.filter((e) => !tipos || tipos.includes(e.tipo)); }
+  // Para exportar: sin lo anterior al inicio de uso; los repetidos parten desde ese día
+  function filtrar(evs, tipos, cfg) {
+    const inicioUso = cfg ? desdeUso(cfg) : null;
+    const out = [];
+    for (const e of evs) {
+      if (tipos && !tipos.includes(e.tipo)) continue;
+      if (e.previo) continue;
+      if (e.cada && inicioUso && e.fecha < inicioUso) {
+        const f = proxima(e, inicioUso);
+        if (!f) continue;
+        out.push({ ...e, fecha: f });
+      } else out.push(e);
+    }
+    return out;
+  }
 
   function ics(planes, opciones) {
     const { hora = "08:00", aviso = 0, tipos } = opciones || {};
     const ahora = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
     const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mi Huerta//ES", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Mi Huerta"];
     for (const plan of planes) {
-      for (const e of filtrar(eventos(plan), tipos)) {
+      for (const e of filtrar(eventos(plan), tipos, plan.cfg)) {
         L.push("BEGIN:VEVENT", `UID:${e.key}-${plan.cfg.id || "x"}@mihuerta`, `DTSTAMP:${ahora}`,
           `DTSTART:${icsFecha(e.fecha, hora)}`, "DURATION:PT30M",
           plegar(`SUMMARY:${icsTexto(e.titulo)}`), plegar(`DESCRIPTION:${icsTexto(e.nota || "")}`));
@@ -177,7 +211,7 @@ const Calendario = (() => {
     const { hora = "08:00", tipos } = opciones || {};
     const [h, m] = hora.split(":").map(Number);
     const lugar = plan.cfg.lugar ? ` · ${plan.cfg.lugar}` : "";
-    return filtrar(eventos(plan), tipos).map((e) => {
+    return filtrar(eventos(plan), tipos, plan.cfg).map((e) => {
       const ini = new Date(e.fecha.getFullYear(), e.fecha.getMonth(), e.fecha.getDate(), h, m);
       let rrule = "";
       if (e.cada) {
