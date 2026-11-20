@@ -22,6 +22,10 @@
     <section id="v-inicio" class="view">
       <div id="aviso-update" class="card update hidden"></div>
       <button id="btn-nuevo" class="btn-big">＋ Nuevo cultivo</button>
+      <div id="agenda-box" class="hidden">
+        <h2 class="sub">📅 Próximos días</h2>
+        <div id="agenda" class="card"></div>
+      </div>
       <h2 class="sub">Mis cultivos</h2>
       <div id="lista"></div>
 
@@ -101,9 +105,11 @@
       <div id="p-head" class="card head"></div>
       <nav class="tabs">
         <button data-tab="resumen" class="active">📋<br>Resumen</button>
+        <button data-tab="calendario">📅<br>Agenda</button>
         <button data-tab="riego">💧<br>Riego</button>
         <button data-tab="nutricion">🧪<br>Nutrición</button>
         <button data-tab="plagas">🐛<br>Plagas</button>
+        <button data-tab="notas">📝<br>Notas</button>
       </nav>
       <div id="p-body"></div>
       <div class="actions">
@@ -116,13 +122,16 @@
     </section>
   </main>
 
+  <div id="sheet" class="sheet hidden"><div class="sheet-box"><div id="sheet-body"></div></div></div>
   <div id="toast" class="toast hidden"></div>
 
   <script src="lib/leaflet/leaflet.js"></script>
   <script src="data.js"></script>
+  <script src="etiqueta.js"></script>
   <script src="calc.js"></script>
   <script src="clima.js"></script>
   <script src="respaldo.js"></script>
+  <script src="calendario.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

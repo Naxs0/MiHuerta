@@ -2,7 +2,7 @@
 //  Copia de seguridad (Google Drive) y aviso de nuevas versiones
 // =====================================================================
 const REPO = "Naxs0/MiHuerta";
-const VERSION_WEB = "2.0.0";
+const VERSION_WEB = "2.1.0";
 const nativo = () => typeof window.Android !== "undefined";
 
 const Respaldo = (() => {

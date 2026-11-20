@@ -3,12 +3,16 @@ package cl.mihuerta.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.CalendarContract;
 import android.provider.OpenableColumns;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -20,6 +24,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -28,11 +33,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.TimeZone;
 
 public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
     static final String INICIO = "https://" + HOST + "/www/index.html";
-    static final int REQ_CREAR = 1, REQ_ABRIR = 2, REQ_GPS = 3;
+    static final int REQ_CREAR = 1, REQ_ABRIR = 2, REQ_GPS = 3, REQ_CAL = 4;
 
     private WebView web;
     private SharedPreferences prefs;
@@ -118,6 +124,50 @@ public class MainActivity extends Activity {
             for (int r : res) ok |= (r == PackageManager.PERMISSION_GRANTED);
             geoCb.invoke(geoOrigen, ok, false);
             geoCb = null;
+        }
+        if (code == REQ_CAL) {
+            if (tieneCalendario()) listarCalendariosAhora();
+            else llamarJs("alErrorCalendario", "Sin permiso para usar el calendario. Puedes darlo en Ajustes > Apps > Mi Huerta > Permisos.");
+        }
+    }
+
+    // ---------- Calendario del teléfono (Google Calendar) ----------
+    private boolean tieneCalendario() {
+        return checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void listarCalendariosAhora() {
+        new Thread(() -> {
+            JSONArray arr = new JSONArray();
+            String[] cols = {CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                    CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
+                    CalendarContract.Calendars.IS_PRIMARY};
+            String sel = CalendarContract.Calendars.VISIBLE + "=1 AND " + CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+                    + ">=" + CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR;
+            try (Cursor c = getContentResolver().query(CalendarContract.Calendars.CONTENT_URI, cols, sel, null, null)) {
+                while (c != null && c.moveToNext()) {
+                    JSONObject o = new JSONObject();
+                    o.put("id", c.getLong(0));
+                    o.put("nombre", c.getString(1));
+                    o.put("cuenta", c.getString(2));
+                    o.put("google", "com.google".equals(c.getString(3)) ? 1 : 0);
+                    o.put("principal", c.getInt(4));
+                    arr.put(o);
+                }
+                llamarJs("alCalendarios", arr.toString());
+            } catch (Exception e) {
+                llamarJs("alErrorCalendario", "No se pudieron leer los calendarios: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void borrarIds(JSONArray ids) {
+        ContentResolver cr = getContentResolver();
+        for (int i = 0; i < ids.length(); i++) {
+            try {
+                cr.delete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, ids.getLong(i)), null, null);
+            } catch (Exception ignored) { }
         }
     }
 
@@ -291,6 +341,70 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) { }
             }
             prefs.edit().remove("copiaUri").remove("copiaNombre").remove("copiaLargo").apply();
+        }
+
+        // ----- calendario del teléfono -----
+        @JavascriptInterface
+        public void listarCalendarios() {
+            if (tieneCalendario()) listarCalendariosAhora();
+            else runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.READ_CALENDAR,
+                    Manifest.permission.WRITE_CALENDAR}, REQ_CAL));
+        }
+
+        @JavascriptInterface
+        public void sincronizarCalendario(final String calId, final String eventosJson, final String borrarJson,
+                                          final int aviso, final String token) {
+            new Thread(() -> {
+                JSONObject res = new JSONObject();
+                JSONObject ids = new JSONObject();
+                try {
+                    res.put("token", token);
+                    if (!tieneCalendario()) throw new Exception("Sin permiso de calendario");
+                    borrarIds(new JSONArray(borrarJson));
+                    JSONArray evs = new JSONArray(eventosJson);
+                    ContentResolver cr = getContentResolver();
+                    String tz = TimeZone.getDefault().getID();
+                    for (int i = 0; i < evs.length(); i++) {
+                        JSONObject e = evs.getJSONObject(i);
+                        ContentValues v = new ContentValues();
+                        long ini = e.getLong("inicio");
+                        v.put(CalendarContract.Events.CALENDAR_ID, Long.parseLong(calId));
+                        v.put(CalendarContract.Events.TITLE, e.getString("titulo"));
+                        v.put(CalendarContract.Events.DESCRIPTION, e.optString("desc"));
+                        v.put(CalendarContract.Events.DTSTART, ini);
+                        v.put(CalendarContract.Events.EVENT_TIMEZONE, tz);
+                        v.put(CalendarContract.Events.HAS_ALARM, 1);
+                        String rrule = e.optString("rrule", "");
+                        int dur = e.optInt("durMin", 30);
+                        if (rrule.length() > 0) {
+                            v.put(CalendarContract.Events.RRULE, rrule);
+                            v.put(CalendarContract.Events.DURATION, "PT" + dur + "M");
+                        } else {
+                            v.put(CalendarContract.Events.DTEND, ini + dur * 60000L);
+                        }
+                        Uri u = cr.insert(CalendarContract.Events.CONTENT_URI, v);
+                        if (u == null) continue;
+                        long id = Long.parseLong(u.getLastPathSegment());
+                        ContentValues r = new ContentValues();
+                        r.put(CalendarContract.Reminders.EVENT_ID, id);
+                        r.put(CalendarContract.Reminders.MINUTES, aviso);
+                        r.put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT);
+                        cr.insert(CalendarContract.Reminders.CONTENT_URI, r);
+                        ids.put(e.getString("key"), id);
+                    }
+                    res.put("ids", ids);
+                } catch (Exception ex) {
+                    try { res.put("ids", ids); res.put("error", "No se pudo actualizar el calendario: " + ex.getMessage()); } catch (Exception ignored) { }
+                }
+                llamarJs("alCalendarioSincronizado", res.toString());
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void borrarEventos(final String idsJson) {
+            new Thread(() -> {
+                try { if (tieneCalendario()) borrarIds(new JSONArray(idsJson)); } catch (Exception ignored) { }
+            }).start();
         }
 
         // ----- recuperar datos guardados por la versión 1 -----

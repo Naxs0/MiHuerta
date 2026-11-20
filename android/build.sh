@@ -9,7 +9,7 @@ PJ="$SDK/pf/android-35/android.jar"
 source ./version.properties
 
 rm -rf build && mkdir -p build/assets/www/icons build/assets/www/lib build/gen build/classes build/dex
-cp ../index.html ../styles.css ../data.js ../calc.js ../clima.js ../respaldo.js ../app.js ../manifest.webmanifest build/assets/www/
+cp ../index.html ../styles.css ../data.js ../etiqueta.js ../calc.js ../clima.js ../respaldo.js ../calendario.js ../app.js ../manifest.webmanifest build/assets/www/
 cp ../icons/*.png build/assets/www/icons/
 cp -r ../lib/leaflet build/assets/www/lib/
 cp migrar.html build/assets/www/

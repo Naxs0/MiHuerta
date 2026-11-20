@@ -89,6 +89,7 @@ function renderInicio() {
   $$("#lista .item").forEach((el) => el.onclick = () => {
     cfgActual = cargar().find((x) => x.id === el.dataset.id); tabActual = "resumen"; location.hash = "#plan";
   });
+  renderAgenda(lista);
   renderRespaldo();
   $("#version-txt").innerHTML = `Mi Huerta v${Actualizar.version()} · <a href="#" id="buscar-upd">Buscar actualizaciones</a>`;
   $("#buscar-upd").onclick = (ev) => { ev.preventDefault(); revisarVersion(true); };
@@ -311,6 +312,10 @@ function verPlan() {
     if (!cfg.fecha) return err("Elige la fecha de plantación.");
   }
   if (cfg.ph && (cfg.ph < 3 || cfg.ph > 10)) return err("El pH debe estar entre 3 y 10.");
+  if (cfg.id) {   // conservar agenda y notas al editar
+    const prev = cargar().find((x) => x.id === cfg.id);
+    if (prev) { cfg.calendario = prev.calendario; cfg.notas = prev.notas; }
+  }
   cfgActual = cfg; tabActual = "resumen";
   if (cfg.id) guardarCfg(cfg, false);
   location.hash = "#plan";
@@ -334,7 +339,9 @@ function renderPlan() {
     <div class="t">${esc(p.c.nombre)}${cfg.lugar ? " · " + esc(cfg.lugar) : ""}</div>
     <div class="s">${p.sol.icono} ${p.sol.nombre} · ${clima}<br>${cant}</div></div>`;
   $$(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tabActual));
-  $("#p-body").innerHTML = { resumen: tabResumen, riego: tabRiego, nutricion: tabNutricion, plagas: tabPlagas }[tabActual](p);
+  $("#p-body").innerHTML = { resumen: tabResumen, calendario: tabCalendario, riego: tabRiego, nutricion: tabNutricion, plagas: tabPlagas, notas: tabNotas }[tabActual](p);
+  const bind = { calendario: bindCalendario, notas: bindNotas, plagas: bindPlagas }[tabActual];
+  if (bind) bind(p);
   $("#btn-guardar").classList.toggle("hidden", !!cfg.id);
   $("#btn-editar").classList.toggle("hidden", !cfg.id);
   $("#btn-borrar").classList.toggle("hidden", !cfg.id);
@@ -547,21 +554,394 @@ function tabNutricion(p) {
     <p class="pie">Dosis de referencia calculadas a partir de lo que extrae el cultivo. Lo ideal es un análisis de suelo. Lee siempre la etiqueta.</p>`;
 }
 
+let soloVerde = localStorage.getItem("mihuerta.soloVerde") === "1";
+
+function opcionVerde(id) {
+  const v = VERDES[id];
+  return `<div class="verde-op ${v.bio ? "bio" : ""}"><b>${v.bio ? "🦠" : "🟢"} ${v.nombre}</b> <span class="nota">· ${v.tipo}</span>
+    <div class="nota">Ej.: ${v.ejemplos}</div><div class="nota">💡 ${v.nota}</div></div>`;
+}
+
 function tabPlagas(p) {
-  return p.c.plagas.map((x) => (typeof x === "string" ? PLAGAS[x] : x)).map((x) => `<div class="card plaga">
-    <h3>${x.hongo ? "🍄" : "🐛"} ${x.nombre}${x.hongo && p.riesgoHongos ? '<span class="badge rojo">RIESGO ALTO EN TU ZONA</span>' : ""}</h3>
-    <p>👀 <b>Cómo reconocerla:</b> ${x.sintomas}</p>
-    <p>🌿 <b>Control natural:</b> ${x.org}</p>
-    <p>🧪 <b>Control químico:</b> ${x.quim}</p></div>`).join("") +
-    `<p class="pie">Usa productos autorizados para el cultivo, respeta la dosis y los días de carencia antes de cosechar.</p>`;
+  const franjas = `<div class="franjas">${FRANJAS.map((f) => `<div class="franja"><i style="background:${f.hex}"></i>
+    <div><b>${f.color} · Clase ${f.clase}</b><br><span class="nota">${f.nombre}</span></div></div>`).join("")}</div>`;
+  const cab = `<div class="card verde-card">
+    <h3>🟢 Etiqueta verde</h3>
+    <p class="nota">En Chile cada plaguicida trae abajo una <b>franja de color</b> según su toxicidad para las personas (SAG, Res. 2196/2000).
+      La <b>verde (Clase IV)</b> son "productos que normalmente no ofrecen peligro": la mejor opción para la huerta de la casa.</p>
+    ${franjas}
+    <label class="check toggle"><input type="checkbox" id="solo-verde" ${soloVerde ? "checked" : ""}> Mostrar solo opciones de etiqueta verde y biológicas</label>
+  </div>`;
+
+  const cards = p.c.plagas.map((x) => (typeof x === "string" ? PLAGAS[x] : x)).map((x) => {
+    const verdes = verdesPara(x);
+    const quim = x.quim && x.quim !== "—" && !soloVerde
+      ? `<p>🧪 <b>Químico convencional:</b> ${x.quim} <span class="nota">(revisa el color de la franja; prefiere verde o azul)</span></p>` : "";
+    return `<div class="card plaga">
+      <h3>${x.hongo ? "🍄" : "🐛"} ${x.nombre}${x.hongo && p.riesgoHongos ? '<span class="badge rojo">RIESGO ALTO EN TU ZONA</span>' : ""}</h3>
+      <p>👀 <b>Cómo reconocerla:</b> ${x.sintomas}</p>
+      <p>🌿 <b>Control natural:</b> ${x.org}</p>
+      ${verdes.length ? `<div class="verde-box"><b>🟢 Opciones etiqueta verde y biológicas</b>${verdes.map(opcionVerde).join("")}</div>`
+        : (soloVerde ? `<p class="nota">No hay un producto de etiqueta verde específico para esto: usa el control natural.</p>` : "")}
+      ${quim}</div>`;
+  }).join("");
+
+  const guia = `<details class="card"><summary><b>📋 Todos los productos de etiqueta verde y biológicos</b></summary>
+    ${Object.keys(VERDES).map(opcionVerde).join("")}
+    <p class="nota mt">🧼 El <b>jabón potásico</b> visado por el SAG está autorizado para <b>lavado de plantas</b> (quita melaza, polvo y parte de la plaga), no como plaguicida.</p>
+    <p class="nota">Fuente: SAG, Lista Nº 45 de insumos visados (dic. 2022) y Res. 2196/2000. Los registros cambian: confirma en el envase que diga <b>"Toxicidad IV – Verde"</b> y que el cultivo esté en la etiqueta.</p></details>`;
+
+  const seguridad = `<div class="card"><h3>🧤 Verde no significa inofensivo</h3><ul class="tareas">
+    <li>Lee la etiqueta: dosis, <b>período de carencia</b> (días antes de cosechar) y <b>reingreso</b>.</li>
+    <li>Usa guantes, mascarilla y lentes; no comas ni fumes mientras aplicas.</li>
+    <li>Aplica al atardecer, sin viento y sin flores abiertas, para cuidar a las abejas.</li>
+    <li>Triple lavado del envase y no lo botes en acequias ni ríos.</li>
+    <li>Guarda los productos lejos de niños, mascotas y alimentos.</li></ul></div>`;
+
+  return cab + cards + guia + seguridad;
+}
+
+function bindPlagas() {
+  const t = $("#solo-verde");
+  if (t) t.onchange = () => { soloVerde = t.checked; localStorage.setItem("mihuerta.soloVerde", soloVerde ? "1" : "0"); renderPlan(); };
+}
+
+// =====================================================================
+//  VENTANA INFERIOR (para editar)
+// =====================================================================
+function abrirSheet(html, alAbrir) {
+  $("#sheet-body").innerHTML = `<button class="sheet-x" id="sheet-x">✕</button>` + html;
+  $("#sheet").classList.remove("hidden");
+  $("#sheet-x").onclick = cerrarSheet;
+  if (alAbrir) alAbrir();
+}
+function cerrarSheet() { $("#sheet").classList.add("hidden"); $("#sheet-body").innerHTML = ""; }
+$("#sheet").onclick = (e) => { if (e.target.id === "sheet") cerrarSheet(); };
+
+// Guarda los cambios del cultivo que se está viendo (si ya está guardado)
+function persistirActual(resync) {
+  if (cfgActual.id) guardarCfg(cfgActual, false, resync);
+}
+
+// =====================================================================
+//  AGENDA / CALENDARIO
+// =====================================================================
+let calFiltro = "proximos";
+// Solo abonos, foliares y tareas propias de las últimas 2 semanas cuentan como atrasados
+const puedeAtrasarse = (e, hoy) => e.tipo !== "etapa" && e.fecha < hoy && e.fecha >= sumarDias(hoy, -14);
+const fechaLarga = (d) => `${DIAS_SEM[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]}`;
+
+function tabCalendario(p) {
+  const cfg = p.cfg, hoy = hoy0();
+  const todos = Calendario.eventos(p, true);
+  const visibles = todos.filter((e) => !e.oculto), ocultos = todos.filter((e) => e.oculto);
+  const sync = cfg.calendario && cfg.calendario.sync;
+
+  let syncCard;
+  if (nativo()) {
+    syncCard = sync
+      ? `<div class="card sync-ok"><b>✅ Vinculado al calendario del teléfono</b>
+          <div class="nota">${esc(sync.calNombre)} · ${Object.keys(sync.ids || {}).length} eventos · aviso a las ${sync.hora}. Se actualiza solo cuando cambias algo.</div>
+          <div class="row2 mt"><button class="btn-sec" id="cal-resync">🔄 Actualizar</button><button class="btn-sec" id="cal-unsync">⛓️‍💥 Desvincular</button></div></div>`
+      : `<div class="card"><b>📲 Google Calendar</b><p class="nota">Pasa estas tareas al calendario de tu teléfono, con aviso. Se sincroniza con tu cuenta de Google.</p>
+          <button class="btn-big" id="cal-sync">📲 Agregar a mi calendario</button></div>`;
+  } else {
+    syncCard = `<div class="card"><b>📲 Google Calendar</b><p class="nota">Descarga el archivo y ábrelo en Google Calendar (calendar.google.com → ⚙️ → Importar). En la app de Android se vincula directo.</p>
+      <button class="btn-sec full" id="cal-ics">⬇️ Descargar calendario (.ics)</button></div>`;
+  }
+
+  const lista = visibles.filter((e) => {
+    const prox = Calendario.proxima(e, hoy);
+    if (calFiltro === "hechos") return !e.cada && e.hecho;
+    if (calFiltro === "todos") return true;
+    if (e.cada) return !!prox;
+    if (e.hecho) return false;
+    return e.fecha >= hoy || puedeAtrasarse(e, hoy);   // próximos + atrasados recientes
+  });
+
+  const filas = lista.map((e) => {
+    const prox = Calendario.proxima(e, hoy);
+    let cuando, okey = e.key, hecho = e.hecho, atrasado = false;
+    if (e.cada) {
+      cuando = `Cada ${e.cada} días · ${fmt(e.fecha)} → ${e.hasta ? fmt(e.hasta) : "sin fin"}${prox ? ` · próximo: <b>${fechaLarga(prox)}</b>` : " · terminado"}`;
+      if (prox) {
+        okey = `${e.key}@${Calendario.iso(prox)}`;
+        const a = cfg.calendario && cfg.calendario.ajustes && cfg.calendario.ajustes[okey];
+        hecho = !!(a && a.hecho);
+      }
+    } else {
+      atrasado = !e.hecho && puedeAtrasarse(e, hoy);
+      cuando = fechaLarga(e.fecha) + (atrasado ? ' <span class="badge rojo">atrasado</span>' : "");
+    }
+    return `<div class="ev t-${e.tipo} ${hecho ? "hecho" : ""}">
+      <input type="checkbox" class="chk" data-ok="${okey}" ${hecho ? "checked" : ""} ${e.cada && !prox ? "disabled" : ""}>
+      <div class="evt" data-edit="${e.key}"><b>${esc(e.titulo)}</b>${e.editado ? " ✏️" : ""}<div class="nota">${cuando}</div></div>
+    </div>`;
+  }).join("");
+
+  return syncCard + `
+    <button class="btn-big" id="cal-nuevo">＋ Agregar tarea</button>
+    <div class="seg mt" id="cal-filtro">
+      <button data-k="proximos" class="${calFiltro === "proximos" ? "sel" : ""}">Pendientes</button>
+      <button data-k="todos" class="${calFiltro === "todos" ? "sel" : ""}">Todo</button>
+      <button data-k="hechos" class="${calFiltro === "hechos" ? "sel" : ""}">Hechos</button>
+    </div>
+    <div class="card evs">${filas || '<div class="vacio">No hay tareas aquí.</div>'}</div>
+    <p class="nota">Toca una tarea para cambiar la fecha, el texto o la repetición. ✓ marca como hecha.</p>
+    ${ocultos.length ? `<details class="card"><summary>Ocultas (${ocultos.length})</summary>${ocultos.map((e) =>
+      `<div class="ev"><div class="evt" data-edit="${e.key}">${esc(e.titulo)}<div class="nota">${fmt(e.fecha)}</div></div></div>`).join("")}</details>` : ""}`;
+}
+
+function bindCalendario(p) {
+  const cfg = p.cfg;
+  $$("#cal-filtro button").forEach((b) => b.onclick = () => { calFiltro = b.dataset.k; renderPlan(); });
+  $$("#p-body .chk").forEach((c) => c.onchange = () => {
+    Calendario.ajustar(cfg, c.dataset.ok, { hecho: c.checked });
+    persistirActual(false);
+    if (c.checked) toast("✅ Hecho");
+    setTimeout(renderPlan, 250);
+  });
+  $$("#p-body [data-edit]").forEach((el) => el.onclick = () => editarEvento(p, el.dataset.edit));
+  $("#cal-nuevo").onclick = () => editarEvento(p, null);
+  const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  on("#cal-ics", () => descargar(`mihuerta-${cfg.cultivo}.ics`, Calendario.ics([p], { hora: "08:00", aviso: 0 }), "text/calendar"));
+  on("#cal-sync", () => abrirVincular(cfg));
+  on("#cal-resync", () => { sincronizarTelefono(cfg); toast("🔄 Actualizando calendario…"); });
+  on("#cal-unsync", () => {
+    if (!confirm("¿Quitar estas tareas del calendario del teléfono?")) return;
+    const ids = Object.values(cfg.calendario.sync.ids || {});
+    if (ids.length) Android.borrarEventos(JSON.stringify(ids));
+    delete cfg.calendario.sync; persistirActual(false); renderPlan(); toast("Tareas quitadas del calendario");
+  });
+}
+
+const PLANTILLAS = ["✂️ Podar", "🌿 Desmalezar", "🧺 Cosechar", "🐛 Revisar plagas", "💊 Aplicar tratamiento", "🪴 Aporcar", "🧹 Limpiar goteros"];
+
+function editarEvento(p, key) {
+  const cfg = p.cfg;
+  const e = key ? Calendario.eventos(p, true).find((x) => x.key === key) : null;
+  const nuevo = !e, propio = nuevo || e.propio;
+  const repite = nuevo ? false : !!e.cada;
+  abrirSheet(`<h3>${nuevo ? "＋ Nueva tarea" : "✏️ Editar tarea"}</h3>
+    ${nuevo ? `<div class="plantillas">${PLANTILLAS.map((t) => `<button type="button" class="chip-s">${t}</button>`).join("")}</div>` : ""}
+    <label class="lbl">Título</label><input id="ev-titulo" class="inp" value="${esc(e ? e.titulo : "")}" placeholder="Ej. Revisar goteros">
+    <div class="row2"><div><label class="lbl">${repite || propio ? "Desde" : "Fecha"}</label><input id="ev-fecha" type="date" class="inp" value="${Calendario.iso(e ? e.fecha : hoy0())}"></div>
+      ${propio || repite ? `<div><label class="lbl">Repetir cada (días)</label><input id="ev-cada" type="number" min="1" class="inp" placeholder="No repetir" value="${e && e.cada ? e.cada : ""}"></div>` : "<div></div>"}</div>
+    ${propio || repite ? `<label class="lbl">Hasta (si se repite)</label><input id="ev-hasta" type="date" class="inp" value="${e && e.hasta ? Calendario.iso(e.hasta) : ""}">` : ""}
+    <label class="lbl">Nota / detalle</label><textarea id="ev-nota" class="inp" rows="5">${esc(e ? e.nota : "")}</textarea>
+    <button class="btn-big mt" id="ev-ok">💾 Guardar</button>
+    ${!nuevo && e.propio ? `<button class="btn-danger" id="ev-del">🗑 Eliminar tarea</button>` : ""}
+    ${!nuevo && !e.propio ? `<div class="row2 mt"><button class="btn-sec" id="ev-ocultar">${e.oculto ? "👁️ Mostrar" : "🙈 Ocultar"}</button>
+      <button class="btn-sec" id="ev-reset" ${e.editado ? "" : "disabled"}>↩️ Original</button></div>` : ""}`, () => {
+    $$(".plantillas .chip-s").forEach((b) => b.onclick = () => { $("#ev-titulo").value = b.textContent; });
+    const val = (id) => { const x = $(id); return x ? x.value.trim() : ""; };
+    $("#ev-ok").onclick = () => {
+      const titulo = val("#ev-titulo"), fecha = val("#ev-fecha");
+      if (!titulo || !fecha) return toast("Escribe un título y una fecha");
+      const cada = parseInt(val("#ev-cada"), 10) || null, hasta = val("#ev-hasta") || null, nota = $("#ev-nota").value;
+      if (nuevo) Calendario.agregarPropio(cfg, { titulo, fecha, cada, hasta: cada ? hasta : null, nota });
+      else if (e.propio) Calendario.ajustar(cfg, key, { titulo, fecha, cada, hasta: cada ? hasta : null, nota });
+      else {
+        const o = e.original;
+        Calendario.ajustar(cfg, key, {
+          titulo: titulo !== o.titulo ? titulo : undefined,
+          nota: nota !== o.nota ? nota : undefined,
+          fecha: fecha !== Calendario.iso(o.fecha) ? fecha : undefined,
+          cada: o.cada && cada && cada !== o.cada ? cada : undefined,
+          hasta: o.hasta && hasta && hasta !== Calendario.iso(o.hasta) ? hasta : undefined,
+          oculto: e.oculto || undefined, hecho: e.hecho || undefined });
+      }
+      persistirActual(true); cerrarSheet(); renderPlan(); toast("💾 Guardado");
+    };
+    const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+    on("#ev-del", () => { Calendario.borrarPropio(cfg, e.id); persistirActual(true); cerrarSheet(); renderPlan(); });
+    on("#ev-ocultar", () => { Calendario.ajustar(cfg, key, { oculto: !e.oculto }); persistirActual(true); cerrarSheet(); renderPlan(); });
+    on("#ev-reset", () => { Calendario.restablecer(cfg, key); persistirActual(true); cerrarSheet(); renderPlan(); });
+  });
+}
+
+function descargar(nombre, texto, tipo) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([texto], { type: tipo }));
+  a.download = nombre; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ----- Vincular con el calendario del teléfono (Android) -----
+function abrirVincular(cfg) {
+  if (!cfg.id) { guardarCfg(cfg, true); toast("💾 Cultivo guardado"); }
+  abrirSheet(`<h3>📲 Agregar a mi calendario</h3><div id="vin-cals" class="nota">Buscando tus calendarios… (acepta el permiso si te lo pide)</div>`);
+  window.alErrorCalendario = (msg) => { $("#vin-cals").innerHTML = `❌ ${esc(msg)}`; };
+  window.alCalendarios = (json) => {
+    const cals = JSON.parse(json);
+    if (!cals.length) return window.alErrorCalendario("No encontré calendarios en el teléfono. Abre Google Calendar una vez e inténtalo de nuevo.");
+    cals.sort((a, b) => (b.google - a.google) || (b.principal - a.principal));
+    const tipos = Object.entries(Calendario.TIPOS);
+    $("#sheet-body").innerHTML = `<button class="sheet-x" id="sheet-x">✕</button><h3>📲 Agregar a mi calendario</h3>
+      <label class="lbl">Calendario</label>
+      ${cals.map((c, i) => `<label class="radio"><input type="radio" name="cal" value="${c.id}" ${i === 0 ? "checked" : ""}>
+        <span><b>${esc(c.nombre)}</b><br><span class="nota">${esc(c.cuenta)}</span></span></label>`).join("")}
+      <div class="row2"><div><label class="lbl">Hora del aviso</label><input id="vin-hora" type="time" class="inp" value="08:00"></div>
+        <div><label class="lbl">Avisar</label><select id="vin-aviso" class="inp">
+          <option value="0">A esa hora</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="720">La noche anterior</option></select></div></div>
+      <label class="lbl">Qué agregar</label>
+      ${tipos.map(([k, t]) => `<label class="check"><input type="checkbox" class="vin-tipo" value="${k}" checked> ${t.icono} ${t.nombre}</label>`).join("")}
+      <button class="btn-big mt" id="vin-ok">📲 Agregar</button>`;
+    $("#sheet-x").onclick = cerrarSheet;
+    $("#vin-ok").onclick = () => {
+      const sel = document.querySelector('input[name="cal"]:checked');
+      const cal = cals.find((c) => String(c.id) === sel.value);
+      const old = (cfg.calendario && cfg.calendario.sync && cfg.calendario.sync.ids) || {};
+      cfg.calendario = cfg.calendario || {};
+      cfg.calendario.sync = { calId: cal.id, calNombre: `${cal.nombre} (${cal.cuenta})`, hora: $("#vin-hora").value || "08:00",
+        aviso: parseInt($("#vin-aviso").value, 10) || 0, tipos: [...$$(".vin-tipo")].filter((x) => x.checked).map((x) => x.value), ids: old };
+      persistirActual(false);
+      sincronizarTelefono(cfg);
+      cerrarSheet(); toast("📲 Agregando al calendario…");
+    };
+  };
+  Android.listarCalendarios();
+}
+
+function sincronizarTelefono(cfg) {
+  const s = cfg.calendario && cfg.calendario.sync;
+  if (!nativo() || !s) return;
+  const plan = calcularPlan(cfg);
+  const evs = Calendario.paraTelefono(plan, s);
+  Android.sincronizarCalendario(String(s.calId), JSON.stringify(evs), JSON.stringify(Object.values(s.ids || {})), s.aviso || 0, cfg.id);
+}
+window.alCalendarioSincronizado = (json) => {
+  const r = JSON.parse(json);
+  const lista = cargar();
+  const cfg = lista.find((x) => x.id === r.token);
+  if (!cfg || !cfg.calendario || !cfg.calendario.sync) return;
+  cfg.calendario.sync.ids = r.ids || {};
+  cfg.calendario.sync.fecha = new Date().toISOString();
+  guardarTodo(lista);
+  if (cfgActual && cfgActual.id === cfg.id) { cfgActual = cfg; if (location.hash === "#plan") renderPlan(); }
+  toast(r.error ? "⚠️ " + r.error : `✅ ${Object.keys(r.ids || {}).length} tareas en tu calendario`, 4000);
+};
+
+const pendientesSync = {};
+function programarResync(cfg) {
+  if (!nativo() || !cfg.calendario || !cfg.calendario.sync) return;
+  clearTimeout(pendientesSync[cfg.id]);
+  pendientesSync[cfg.id] = setTimeout(() => {
+    const fresco = cargar().find((x) => x.id === cfg.id);
+    if (fresco) sincronizarTelefono(fresco);
+  }, 1500);
+}
+
+// ----- Agenda del inicio (todos los cultivos) -----
+function renderAgenda(lista) {
+  const hoy = hoy0(), desde = sumarDias(hoy, -7), hasta = sumarDias(hoy, 7);
+  const items = [];
+  for (const cfg of lista) {
+    const plan = calcularPlan(cfg);
+    for (const o of Calendario.ocurrencias(cfg, Calendario.eventos(plan), desde, hasta)) {
+      if (o.fecha < hoy && (o.hecho || o.ev.cada || o.ev.tipo === "etapa")) continue;   // riegos y etapas pasadas no se arrastran
+      items.push({ ...o, cfg, c: plan.c });
+    }
+  }
+  items.sort((a, b) => a.fecha - b.fecha);
+  $("#agenda-box").classList.toggle("hidden", !items.length);
+  if (!items.length) return;
+  const manana = sumarDias(hoy, 1);
+  const grupo = (f) => (f < hoy ? "⚠️ Atrasado" : f.getTime() === hoy.getTime() ? "Hoy" : f.getTime() === manana.getTime() ? "Mañana" : fechaLarga(f));
+  let ult = "", html = "";
+  for (const it of items.slice(0, 25)) {
+    const g = grupo(it.fecha);
+    if (g !== ult) { html += `<div class="ag-dia">${g}</div>`; ult = g; }
+    html += `<div class="ev t-${it.ev.tipo} ${it.hecho ? "hecho" : ""}">
+      <input type="checkbox" class="chk" data-id="${it.cfg.id}" data-ok="${it.okey}" ${it.hecho ? "checked" : ""}>
+      <div class="evt" data-abrir="${it.cfg.id}"><b>${esc(it.ev.titulo)}</b>
+      <div class="nota">${esc(it.cfg.lugar || it.c.nombre)}${it.fecha < hoy ? ` · ${fmt(it.fecha)}` : ""}</div></div></div>`;
+  }
+  if (items.length > 25) html += `<div class="nota">… y ${items.length - 25} más en cada cultivo.</div>`;
+  $("#agenda").innerHTML = html;
+  $$("#agenda .chk").forEach((c) => c.onchange = () => {
+    const l = cargar(), cfg = l.find((x) => x.id === c.dataset.id);
+    Calendario.ajustar(cfg, c.dataset.ok, { hecho: c.checked });
+    guardarTodo(l);
+    setTimeout(() => renderAgenda(cargar()), 250);
+  });
+  $$("#agenda [data-abrir]").forEach((el) => el.onclick = () => {
+    cfgActual = cargar().find((x) => x.id === el.dataset.abrir); tabActual = "calendario"; location.hash = "#plan";
+  });
+}
+
+// =====================================================================
+//  NOTAS / BITÁCORA
+// =====================================================================
+const TIPOS_NOTA = {
+  obs: "📝 Observación", cosecha: "🧺 Cosecha", plaga: "🐛 Plaga / enfermedad",
+  riego: "💧 Riego", abono: "🧪 Abono / tratamiento", labor: "✂️ Labor",
+};
+let notaFiltro = "todas";
+
+function tabNotas(p) {
+  const notas = (p.cfg.notas || []).slice().sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id));
+  const cosechas = notas.filter((n) => n.tipo === "cosecha");
+  const kg = cosechas.reduce((s, n) => s + (n.kg || 0), 0);
+  const lista = notas.filter((n) => notaFiltro === "todas" || n.tipo === notaFiltro);
+  const resumen = `<div class="card"><div class="riego-box">
+      <div><div class="n">${notas.length}</div><div class="l">notas</div></div>
+      <div><div class="n">${r1(kg)} kg</div><div class="l">cosechado</div></div>
+      <div><div class="n">${cosechas.length}</div><div class="l">cosechas</div></div></div>
+      ${kg && !p.c.perenne ? `<p class="nota mt">Rendimiento: ${r1(kg / p.cfg.area)} kg/m²</p>` : ""}
+      ${kg && p.c.perenne ? `<p class="nota mt">Rendimiento: ${r1(kg / p.cfg.plantas)} kg por planta</p>` : ""}</div>`;
+  return resumen + `<button class="btn-big" id="nota-nueva">＋ Nueva nota</button>
+    <div class="seg mt" id="nota-filtro"><button data-k="todas" class="${notaFiltro === "todas" ? "sel" : ""}">Todas</button>
+      ${Object.entries(TIPOS_NOTA).map(([k, v]) => `<button data-k="${k}" class="${notaFiltro === k ? "sel" : ""}">${v.split(" ")[0]}</button>`).join("")}</div>
+    ${lista.length ? lista.map((n) => `<div class="card nota-item" data-nota="${n.id}">
+        <div class="nota">${fechaLarga(parseFecha(n.fecha))} · ${TIPOS_NOTA[n.tipo]}${n.kg ? ` · <b>${r1(n.kg)} kg</b>` : ""}</div>
+        <div class="txt">${esc(n.texto).replace(/\n/g, "<br>") || "<i>(sin texto)</i>"}</div></div>`).join("")
+      : `<div class="vacio">Anota lo que observas, cosechas, plagas o tratamientos. Te sirve para comparar entre temporadas.</div>`}`;
+}
+
+function bindNotas(p) {
+  $("#nota-nueva").onclick = () => editarNota(p, null);
+  $$("#nota-filtro button").forEach((b) => b.onclick = () => { notaFiltro = b.dataset.k; renderPlan(); });
+  $$("#p-body [data-nota]").forEach((el) => el.onclick = () => editarNota(p, el.dataset.nota));
+}
+
+function editarNota(p, id) {
+  const cfg = p.cfg;
+  cfg.notas = cfg.notas || [];
+  const n = id ? cfg.notas.find((x) => x.id === id) : null;
+  let tipo = n ? n.tipo : (notaFiltro !== "todas" ? notaFiltro : "obs");
+  abrirSheet(`<h3>${n ? "✏️ Editar nota" : "📝 Nueva nota"}</h3>
+    <label class="lbl">Tipo</label><div class="opts opts-nota" id="nt-tipo"></div>
+    <div class="row2"><div><label class="lbl">Fecha</label><input id="nt-fecha" type="date" class="inp" value="${n ? n.fecha : hoyISO()}"></div>
+      <div id="nt-kg-box"><label class="lbl">Kilos cosechados</label><input id="nt-kg" type="number" min="0" step="0.1" class="inp" inputmode="decimal" value="${n && n.kg ? n.kg : ""}"></div></div>
+    <label class="lbl">Nota</label><textarea id="nt-texto" class="inp" rows="6" placeholder="¿Qué viste o hiciste?">${esc(n ? n.texto : "")}</textarea>
+    <button class="btn-big mt" id="nt-ok">💾 Guardar</button>
+    ${n ? `<button class="btn-danger" id="nt-del">🗑 Eliminar nota</button>` : ""}`, () => {
+    const pintar = () => {
+      $("#nt-tipo").innerHTML = Object.entries(TIPOS_NOTA).map(([k, v]) => `<button type="button" class="opt ${tipo === k ? "sel" : ""}" data-k="${k}">${v}</button>`).join("");
+      $$("#nt-tipo .opt").forEach((b) => b.onclick = () => { tipo = b.dataset.k; pintar(); });
+      $("#nt-kg-box").style.visibility = tipo === "cosecha" ? "visible" : "hidden";
+    };
+    pintar();
+    $("#nt-ok").onclick = () => {
+      const datos = { fecha: $("#nt-fecha").value || hoyISO(), tipo, texto: $("#nt-texto").value.trim(),
+        kg: tipo === "cosecha" ? parseFloat($("#nt-kg").value) || null : null };
+      if (!datos.texto && !datos.kg) return toast("Escribe algo en la nota");
+      if (n) Object.assign(n, datos); else cfg.notas.push({ id: Date.now().toString(36), ...datos });
+      persistirActual(false); cerrarSheet(); renderPlan(); toast("💾 Nota guardada");
+    };
+    const del = $("#nt-del");
+    if (del) del.onclick = () => { if (!confirm("¿Eliminar la nota?")) return; cfg.notas = cfg.notas.filter((x) => x.id !== id); persistirActual(false); cerrarSheet(); renderPlan(); };
+  });
 }
 
 // ---------- guardar / editar / borrar ----------
-function guardarCfg(cfg, nuevo) {
+function guardarCfg(cfg, nuevo, resync = true) {
   const lista = cargar();
   if (nuevo || !cfg.id) { cfg.id = Date.now().toString(36); lista.unshift(cfg); }
   else { const i = lista.findIndex((x) => x.id === cfg.id); if (i >= 0) lista[i] = cfg; else lista.unshift(cfg); }
   guardarTodo(lista);
+  if (resync) programarResync(cfg);
 }
 
 // ---------- eventos ----------
@@ -576,6 +956,8 @@ $("#btn-guardar").onclick = () => { guardarCfg(cfgActual, true); toast("💾 Cul
 $("#btn-editar").onclick = () => { prepararForm(cfgActual); location.hash = "#editar"; };
 $("#btn-borrar").onclick = () => {
   if (!confirm("¿Eliminar este cultivo?")) return;
+  const s = cfgActual.calendario && cfgActual.calendario.sync;
+  if (nativo() && s && s.ids && Object.keys(s.ids).length) Android.borrarEventos(JSON.stringify(Object.values(s.ids)));
   guardarTodo(cargar().filter((x) => x.id !== cfgActual.id));
   location.hash = "";
 };
